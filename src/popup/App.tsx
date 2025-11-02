@@ -1,0 +1,92 @@
+import type { JSX } from "react";
+import { useEffect, useState } from "react";
+import { loadRootDirectoryHandle } from "../shared/handles";
+import { getSettings } from "../shared/settings";
+import type { Settings } from "../shared/types";
+
+function App(): JSX.Element {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [folderName, setFolderName] = useState<string>("未設定");
+
+  useEffect(() => {
+    void (async () => {
+      const loadedSettings = await getSettings();
+      setSettings(loadedSettings);
+      const handle = await loadRootDirectoryHandle({ requestAccess: false });
+      if (handle) {
+        setFolderName(handle.name);
+      } else if (loadedSettings.rootFolderName) {
+        setFolderName(`${loadedSettings.rootFolderName}（要権限）`);
+      }
+    })();
+  }, []);
+
+  function openOptions(): void {
+    chrome.runtime.openOptionsPage();
+  }
+
+  return (
+    <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="flex flex-col gap-5">
+        <header className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+          <h1 className="text-xl font-semibold leading-tight">WebClip</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            選択したテキストをMarkdownへ保存するChrome拡張です。
+          </p>
+        </header>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            保存先フォルダ
+          </h2>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+            {folderName}
+          </p>
+          <button
+            type="button"
+            onClick={openOptions}
+            className="mt-3 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+          >
+            設定を開く
+          </button>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            使い方
+          </h2>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-zinc-600 dark:text-zinc-300">
+            <li>保存したい文章を選択します。</li>
+            <li>
+              右クリックし「Save to Markdown」または「Save to existing
+              file…」を選びます。
+            </li>
+            <li>完了通知でファイルパスを確認します。</li>
+          </ol>
+          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            既存ファイルへの保存は、ピッカーで既存のMarkdownを選ぶか新規作成を行ってください。
+          </p>
+        </section>
+
+        {settings?.mruFiles.length ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+              最近保存したファイル
+            </h2>
+            <ul className="mt-2 space-y-1 text-sm text-zinc-600 dark:text-zinc-300">
+              {settings.mruFiles.map((path) => (
+                <li key={path}>{path}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <footer className="rounded-2xl border border-indigo-200/60 bg-indigo-50/80 p-4 text-xs text-indigo-600 dark:border-indigo-500/50 dark:bg-indigo-500/10 dark:text-indigo-300">
+          コンテキストメニューが表示されない場合は、拡張機能を再読み込みしてください。
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+export default App;
