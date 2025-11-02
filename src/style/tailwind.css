@@ -2,3 +2,6 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+button[type="button"] {
+  cursor: pointer;
+}

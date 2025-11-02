@@ -19,7 +19,6 @@ export default defineConfig({
     target: "esnext",
     sourcemap: true,
     rollupOptions: {
-      // ← ここを追加
       input: {
         options: resolve(__dirname, "src/options/index.html"),
         picker: resolve(__dirname, "src/picker/index.html"),

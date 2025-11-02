@@ -1,8 +1,9 @@
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { loadRootDirectoryHandle } from "../shared/handles";
-import { getSettings } from "../shared/settings";
-import type { Settings } from "../shared/types";
+import { getSettings, updateSettings } from "../shared/settings";
+import type { Settings, ThemePreference } from "../shared/types";
+import { applyTheme } from "../shared/theme";
 
 function App(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -12,6 +13,9 @@ function App(): JSX.Element {
     void (async () => {
       const loadedSettings = await getSettings();
       setSettings(loadedSettings);
+      if (loadedSettings) {
+        applyTheme(loadedSettings.theme);
+      }
       const handle = await loadRootDirectoryHandle({ requestAccess: false });
       if (handle) {
         setFolderName(handle.name);
@@ -21,8 +25,32 @@ function App(): JSX.Element {
     })();
   }, []);
 
+  useEffect(() => {
+    if (settings) {
+      applyTheme(settings.theme);
+    }
+  }, [settings]);
+
   function openOptions(): void {
     chrome.runtime.openOptionsPage();
+  }
+
+  async function updateTheme(theme: ThemePreference): Promise<void> {
+    if (!settings) {
+      return;
+    }
+    const updated = await updateSettings({ theme });
+    setSettings(updated);
+  }
+
+  if (!settings) {
+    return (
+      <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+          読み込み中…
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -80,6 +108,33 @@ function App(): JSX.Element {
             </ul>
           </section>
         ) : null}
+
+        <section className="rounded-2xl border border-zinc-200 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+          <h2 className="text-lg font-medium">テーマ</h2>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            オプションページとファイルピッカーに適用されます。
+          </p>
+          <div className="mt-4 flex gap-3">
+            {(["system", "light", "dark"] as ThemePreference[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => updateTheme(value)}
+                className={`rounded-xl border px-4 py-2 text-sm capitalize transition ${
+                  settings.theme === value
+                    ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
+                    : "border-zinc-200 text-zinc-500 hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-400"
+                }`}
+              >
+                {value === "system"
+                  ? "システム"
+                  : value === "light"
+                    ? "ライト"
+                    : "ダーク"}
+              </button>
+            ))}
+          </div>
+        </section>
 
         <footer className="rounded-2xl border border-indigo-200/60 bg-indigo-50/80 p-4 text-xs text-indigo-600 dark:border-indigo-500/50 dark:bg-indigo-500/10 dark:text-indigo-300">
           コンテキストメニューが表示されない場合は、拡張機能を再読み込みしてください。
