@@ -20,6 +20,16 @@ export async function listMarkdownFiles(): Promise<string[]> {
   return files.sort((a, b) => a.localeCompare(b, "ja"));
 }
 
+export async function listFolders(): Promise<string[]> {
+  const root = await loadRootDirectoryHandle({ requestAccess: true });
+  if (!root) {
+    return [];
+  }
+  const folders: string[] = [];
+  await traverseFolders(root, "", folders);
+  return folders.sort((a, b) => a.localeCompare(b, "ja"));
+}
+
 async function traverse(
   dir: FileSystemDirectoryHandle,
   prefix: string,
@@ -42,6 +52,33 @@ async function traverse(
     if (output.length >= 500) {
       // Hard cap to avoid huge lists; good enough for picker search.
       return;
+    }
+  }
+}
+
+async function traverseFolders(
+  dir: FileSystemDirectoryHandle,
+  prefix: string,
+  output: string[],
+): Promise<void> {
+  if (!dir.values) {
+    return;
+  }
+  for await (const handle of dir.values()) {
+    if (handle.kind === "directory") {
+      const current = `${prefix}${handle.name}`;
+      output.push(current);
+      if (output.length >= 500) {
+        return;
+      }
+      await traverseFolders(
+        handle as FileSystemDirectoryHandle,
+        `${current}/`,
+        output,
+      );
+      if (output.length >= 500) {
+        return;
+      }
     }
   }
 }

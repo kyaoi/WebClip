@@ -73,7 +73,7 @@ Appends to the single Markdown file configured in Options / Popup (creates it on
 
 ### category (Save to category…)
 Select text → **Right-click → Save to category…** → pick a category.  
-Creates `/カテゴリ名/<page-title>.md`, or `/カテゴリ名/inbox.md` when the category is set to inbox mode.
+On the picker you can choose per clip whether to create `/カテゴリ名/<page-title>.md` or append to `/カテゴリ名/inbox.md`.
 
 ### existingFilePick
 Select text → **Right-click → Save to existing file…**  
@@ -104,7 +104,7 @@ Template variables: `ts`, `selection`, `title`, `url`, `urlFrag`, `linkUrl`, `li
 - **Options / Popup → Save style**
   - Toggle domain-based subfolders for per-page saves.
   - Set the inbox file path (auto-appends `.md` if omitted).
-  - Add, rename, or remove categories, choose their folder slug, and switch inbox mode per category.
+  - Add, rename, or remove categories, pick a subfolder from the saved root (or enter a path), and switch inbox mode per category.
   - Configure the shared category inbox filename (default `inbox.md`).
 - Settings persist locally in Chrome storage + File System Access handles. Reopen Options whenever permissions need to be refreshed.
 

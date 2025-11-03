@@ -14,6 +14,8 @@ interface CategoryInitResponse {
   error?: string;
 }
 
+type CategoryClipMode = "aggregate" | "page";
+
 interface CategorySaveResponse {
   ok: boolean;
   result?: {
@@ -90,7 +92,10 @@ function App(): JSX.Element {
     return text.slice(0, 140);
   }, [context]);
 
-  async function handleSelectCategory(categoryId: string): Promise<void> {
+  async function handleSelectCategory(
+    categoryId: string,
+    mode: CategoryClipMode,
+  ): Promise<void> {
     if (!requestId) {
       return;
     }
@@ -100,6 +105,7 @@ function App(): JSX.Element {
         type: "webclip:category:save",
         requestId,
         categoryId,
+        mode,
       })) as CategorySaveResponse;
       if (!response.ok || !response.result) {
         setStatus(response.error ?? "保存に失敗しました。");
@@ -187,28 +193,50 @@ function App(): JSX.Element {
           {categories.length ? (
             <ul className="mt-3 space-y-3">
               {categories.map((category) => (
-                <li key={category.id}>
-                  <button
-                    type="button"
-                    onClick={() => void handleSelectCategory(category.id)}
-                    disabled={saving}
-                    className="flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-white/70 px-4 py-3 text-left text-sm transition hover:border-indigo-400 hover:bg-indigo-50 dark:border-zinc-700 dark:bg-zinc-900/70 dark:hover:border-indigo-500 dark:hover:bg-indigo-500/20"
-                  >
-                    <div className="flex flex-col">
+                <li
+                  key={category.id}
+                  className="rounded-xl border border-zinc-200 bg-white/70 p-4 text-sm dark:border-zinc-700 dark:bg-zinc-900/70"
+                >
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1">
                       <span className="font-medium text-zinc-700 dark:text-zinc-200">
                         {category.label}
                       </span>
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                        保存先: {category.folder}/
-                        {category.aggregate
-                          ? settings?.categoryAggregateFileName
-                          : "<ページタイトル>.md"}
+                        サブフォルダ: {category.folder || "(ルート)"}
                       </span>
                     </div>
-                    <span className="text-[11px] uppercase tracking-wide text-indigo-500 dark:text-indigo-300">
-                      {category.aggregate ? "集約" : "ページ"}
-                    </span>
-                  </button>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleSelectCategory(category.id, "page")
+                        }
+                        disabled={saving}
+                        className="rounded-lg border border-indigo-200 bg-white/80 px-3 py-2 text-sm transition hover:border-indigo-400 hover:bg-indigo-50 dark:border-indigo-500/50 dark:bg-zinc-900/80 dark:hover:border-indigo-400 dark:hover:bg-indigo-500/20"
+                      >
+                        ページごとに保存
+                        <span className="block text-xs text-zinc-500 dark:text-zinc-400">
+                          {category.folder || "(ルート)"}/
+                          {"<ページタイトル>.md"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleSelectCategory(category.id, "aggregate")
+                        }
+                        disabled={saving}
+                        className="rounded-lg border border-indigo-500 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-600 transition hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-400/70 dark:bg-indigo-500/20 dark:text-indigo-200"
+                      >
+                        カテゴリInboxに保存
+                        <span className="block text-xs text-indigo-500/80 dark:text-indigo-200/80">
+                          {category.folder || "(ルート)"}/
+                          {settings?.categoryAggregateFileName}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>

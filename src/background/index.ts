@@ -174,9 +174,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.type === "webclip:category:save") {
-    const { requestId, categoryId } = message as {
+    const { requestId, categoryId, mode } = message as {
       requestId: string;
       categoryId: string;
+      mode?: "aggregate" | "page";
     };
     void (async () => {
       const pending = pendingRequests.get(requestId);
@@ -200,9 +201,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
       const fileBase = slugify(context.title);
-      const pathString = category.aggregate
-        ? `${category.folder}/${settings.categoryAggregateFileName}`
-        : `${category.folder}/${fileBase}.md`;
+      const useAggregate = mode ? mode === "aggregate" : category.aggregate;
+      const folderPrefix = category.folder ? `${category.folder}/` : "";
+      const pathString = useAggregate
+        ? `${folderPrefix}${settings.categoryAggregateFileName}`
+        : `${folderPrefix}${fileBase}.md`;
       const target = clipTargetFromPath(pathString, true);
       const displayPath = [...target.path, target.fileName].join("/");
       const result = await processClipWithTarget(context, target);

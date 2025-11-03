@@ -1,5 +1,6 @@
 import type { ChangeEvent, FormEvent, JSX } from "react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { listFolders } from "../shared/fileSystem";
 import { slugify } from "../shared/format";
 import {
   clearRootDirectoryHandle,
@@ -26,6 +27,9 @@ function App(): JSX.Element {
     Record<string, { label: string; folder: string }>
   >({});
   const aggregateInputId = useId();
+  const folderDatalistId = useId();
+  const [folderOptions, setFolderOptions] = useState<string[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -46,6 +50,36 @@ function App(): JSX.Element {
     }
   }, [settings]);
 
+  const refreshFolderOptions = useCallback(
+    async (options: { silent?: boolean } = {}): Promise<void> => {
+      const { silent = false } = options;
+      if (!settings?.rootFolderName) {
+        if (!silent) {
+          setStatus("先に保存先フォルダを設定してください。");
+        }
+        return;
+      }
+      try {
+        setFoldersLoading(true);
+        const folders = await listFolders();
+        setFolderOptions(folders);
+        if (!silent && !folders.length) {
+          setStatus(
+            "サブフォルダが見つかりませんでした。必要に応じて作成してください。",
+          );
+        }
+      } catch (error) {
+        console.error(error);
+        if (!silent) {
+          setStatus("フォルダ一覧の取得に失敗しました。");
+        }
+      } finally {
+        setFoldersLoading(false);
+      }
+    },
+    [settings?.rootFolderName],
+  );
+
   useEffect(() => {
     if (!settings) {
       setSingleFileInput("");
@@ -64,6 +98,14 @@ function App(): JSX.Element {
       ),
     );
   }, [settings]);
+
+  useEffect(() => {
+    if (settings?.rootFolderName) {
+      void refreshFolderOptions({ silent: true });
+    } else {
+      setFolderOptions([]);
+    }
+  }, [refreshFolderOptions, settings?.rootFolderName]);
 
   const folderLabel = useMemo(() => {
     if (folderName) {
@@ -478,6 +520,34 @@ function App(): JSX.Element {
                 </div>
               </form>
 
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={() => void refreshFolderOptions()}
+                  className="inline-flex items-center justify-center rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                  disabled={foldersLoading}
+                >
+                  {foldersLoading
+                    ? "フォルダを読み込み中…"
+                    : "フォルダ一覧を更新"}
+                </button>
+                {settings?.rootFolderName ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    保存先フォルダ配下のサブフォルダ候補を利用できます。
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 dark:text-amber-300">
+                    先に保存先フォルダを設定してください。
+                  </p>
+                )}
+              </div>
+
+              <datalist id={folderDatalistId}>
+                {folderOptions.map((folder) => (
+                  <option key={folder} value={folder} />
+                ))}
+              </datalist>
+
               {settings.categories.length ? (
                 <ul className="mt-4 space-y-3">
                   {settings.categories.map((category) => {
@@ -546,8 +616,41 @@ function App(): JSX.Element {
                               onBlur={() =>
                                 void handleCategoryBlur(category.id, draft)
                               }
+                              list={folderDatalistId}
                               className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
                             />
+                            {folderOptions.length ? (
+                              <select
+                                defaultValue=""
+                                onChange={(event) => {
+                                  const selected = event.target.value;
+                                  if (!selected) {
+                                    return;
+                                  }
+                                  const nextDraft = {
+                                    label: draft.label,
+                                    folder: selected,
+                                  };
+                                  setCategoryDrafts((prev) => ({
+                                    ...prev,
+                                    [category.id]: nextDraft,
+                                  }));
+                                  void handleCategoryBlur(
+                                    category.id,
+                                    nextDraft,
+                                  );
+                                  event.target.value = "";
+                                }}
+                                className="mt-2 rounded-lg border border-zinc-200 bg-white/60 px-2 py-1 text-xs text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-300"
+                              >
+                                <option value="">候補から選択…</option>
+                                {folderOptions.map((folder) => (
+                                  <option key={folder} value={folder}>
+                                    {folder}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
                           </label>
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <label className="inline-flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
