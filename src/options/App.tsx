@@ -1,5 +1,6 @@
-import type { JSX } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent, FormEvent, JSX } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { slugify } from "../shared/format";
 import {
   clearRootDirectoryHandle,
   loadRootDirectoryHandle,
@@ -7,13 +8,24 @@ import {
 } from "../shared/handles";
 import { getSettings, updateSettings } from "../shared/settings";
 import { applyTheme } from "../shared/theme";
-import type { Settings, ThemePreference } from "../shared/types";
+import type {
+  CategorySetting,
+  Settings,
+  ThemePreference,
+} from "../shared/types";
 
 function App(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [singleFileInput, setSingleFileInput] = useState("");
+  const [aggregateFileNameInput, setAggregateFileNameInput] = useState("");
+  const [newCategoryLabel, setNewCategoryLabel] = useState("");
+  const [categoryDrafts, setCategoryDrafts] = useState<
+    Record<string, { label: string; folder: string }>
+  >({});
+  const aggregateInputId = useId();
 
   useEffect(() => {
     void (async () => {
@@ -32,6 +44,25 @@ function App(): JSX.Element {
     if (settings) {
       applyTheme(settings.theme);
     }
+  }, [settings]);
+
+  useEffect(() => {
+    if (!settings) {
+      setSingleFileInput("");
+      setAggregateFileNameInput("");
+      setCategoryDrafts({});
+      return;
+    }
+    setSingleFileInput(settings.singleFilePath);
+    setAggregateFileNameInput(settings.categoryAggregateFileName);
+    setCategoryDrafts(
+      Object.fromEntries(
+        settings.categories.map((category) => [
+          category.id,
+          { label: category.label, folder: category.folder },
+        ]),
+      ),
+    );
   }, [settings]);
 
   const folderLabel = useMemo(() => {
@@ -137,6 +168,141 @@ function App(): JSX.Element {
     );
   }
 
+  async function saveSingleFilePath(path: string): Promise<void> {
+    if (!settings) {
+      return;
+    }
+    const trimmed = path.trim();
+    if (!trimmed) {
+      setStatus("単一ファイル名を入力してください。");
+      return;
+    }
+    const normalized = trimmed.toLowerCase().endsWith(".md")
+      ? trimmed
+      : `${trimmed}.md`;
+    const updated = await updateSettings({ singleFilePath: normalized });
+    setSettings(updated);
+    setStatus(`今後は ${updated.singleFilePath} に追記します。`);
+  }
+
+  async function handleSingleFileSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
+    event.preventDefault();
+    await saveSingleFilePath(singleFileInput);
+  }
+
+  async function handleAggregateFileSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
+    event.preventDefault();
+    if (!settings) {
+      return;
+    }
+    const trimmed = aggregateFileNameInput.trim();
+    if (!trimmed) {
+      setStatus("集約ファイル名を入力してください。");
+      return;
+    }
+    const updated = await updateSettings({
+      categoryAggregateFileName: trimmed.endsWith(".md")
+        ? trimmed
+        : `${trimmed}.md`,
+    });
+    setSettings(updated);
+    setStatus(
+      `カテゴリ集約ファイル名を ${updated.categoryAggregateFileName} に更新しました。`,
+    );
+  }
+
+  async function addCategory(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!settings) {
+      return;
+    }
+    const label = newCategoryLabel.trim();
+    if (!label) {
+      setStatus("カテゴリ名を入力してください。");
+      return;
+    }
+    const nextCategory: CategorySetting = {
+      id: crypto.randomUUID(),
+      label,
+      folder: slugify(label),
+      aggregate: false,
+    };
+    const updated = await updateSettings({
+      categories: [...settings.categories, nextCategory],
+    });
+    setSettings(updated);
+    setNewCategoryLabel("");
+    setStatus(`カテゴリ「${label}」を追加しました。`);
+  }
+
+  async function handleCategoryBlur(
+    id: string,
+    draftOverride?: { label: string; folder: string },
+  ): Promise<void> {
+    if (!settings) {
+      return;
+    }
+    const draft = draftOverride ?? categoryDrafts[id];
+    const current = settings.categories.find((item) => item.id === id);
+    if (!draft || !current) {
+      return;
+    }
+    const label = draft.label.trim();
+    if (!label) {
+      setStatus("カテゴリ名を入力してください。");
+      return;
+    }
+    const folder = draft.folder.trim() || slugify(label);
+    const nextCategories = settings.categories.map((item) =>
+      item.id === id ? { ...item, label, folder } : item,
+    );
+    const updated = await updateSettings({ categories: nextCategories });
+    setSettings(updated);
+    setStatus(`カテゴリ「${label}」を更新しました。`);
+  }
+
+  async function toggleCategoryAggregate(
+    id: string,
+    next: boolean,
+  ): Promise<void> {
+    if (!settings) {
+      return;
+    }
+    const current = settings.categories.find((item) => item.id === id);
+    if (!current) {
+      return;
+    }
+    const nextCategories = settings.categories.map((item) =>
+      item.id === id ? { ...item, aggregate: next } : item,
+    );
+    const updated = await updateSettings({ categories: nextCategories });
+    setSettings(updated);
+    setStatus(
+      next
+        ? `カテゴリ「${current.label}」は集約ファイルに保存します。`
+        : `カテゴリ「${current.label}」はページごとのファイルに保存します。`,
+    );
+  }
+
+  async function removeCategory(id: string): Promise<void> {
+    if (!settings) {
+      return;
+    }
+    const target = settings.categories.find((item) => item.id === id);
+    const nextCategories = settings.categories.filter((item) => item.id !== id);
+    const updated = await updateSettings({ categories: nextCategories });
+    setSettings(updated);
+    setStatus(
+      target
+        ? `カテゴリ「${target.label}」を削除しました。`
+        : "カテゴリを削除しました。",
+    );
+  }
+
   if (!settings) {
     return (
       <div className="min-h-screen bg-zinc-50 p-10 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -203,7 +369,7 @@ function App(): JSX.Element {
 
         <section className="rounded-2xl border border-zinc-200 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <h2 className="text-lg font-medium">保存スタイル</h2>
-          <div className="mt-4 flex flex-col gap-4">
+          <div className="mt-4 flex flex-col gap-6">
             <label className="flex items-start gap-3">
               <input
                 type="checkbox"
@@ -221,6 +387,209 @@ function App(): JSX.Element {
                 </span>
               </span>
             </label>
+
+            <div className="rounded-xl border border-indigo-200/70 bg-indigo-50/40 p-4 text-sm shadow-sm dark:border-indigo-500/50 dark:bg-indigo-500/10">
+              <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">
+                単一ファイルスタイル
+              </h3>
+              <p className="mt-1 text-xs text-indigo-600/80 dark:text-indigo-200/80">
+                すべてのクリップを1つのMarkdownに時系列で追記します。メモの整理前に一括で集めたい場合に便利です。
+              </p>
+              <form
+                onSubmit={handleSingleFileSubmit}
+                className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center"
+              >
+                <input
+                  value={singleFileInput}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setSingleFileInput(event.target.value)
+                  }
+                  placeholder="inbox.md"
+                  className="w-full flex-1 rounded-xl border border-indigo-200 bg-white/80 px-3 py-2 text-sm text-zinc-800 shadow-inner transition focus:border-indigo-500 focus:outline-none dark:border-indigo-500/60 dark:bg-zinc-900/90 dark:text-zinc-50"
+                />
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+                >
+                  保存
+                </button>
+              </form>
+              <p className="mt-2 text-xs text-indigo-700/80 dark:text-indigo-200/70">
+                例: <code>inbox.md</code> や <code>notes/inbox.md</code>
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-zinc-200 bg-white/70 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
+              <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
+                カテゴリ分類スタイル
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                保存時にカテゴリを選び、自動で{" "}
+                <code>/カテゴリ名/ページタイトル.md</code>{" "}
+                へ保存します。カテゴリごとに集約ファイルへ切り替えることもできます。
+              </p>
+
+              <form
+                onSubmit={addCategory}
+                className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
+              >
+                <input
+                  value={newCategoryLabel}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setNewCategoryLabel(event.target.value)
+                  }
+                  placeholder="カテゴリ名（例: 技術）"
+                  className="w-full flex-1 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner transition focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                />
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+                >
+                  追加
+                </button>
+              </form>
+
+              <form
+                onSubmit={handleAggregateFileSubmit}
+                className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center"
+              >
+                <label
+                  htmlFor={aggregateInputId}
+                  className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+                >
+                  集約ファイル名
+                </label>
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    id={aggregateInputId}
+                    value={aggregateFileNameInput}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setAggregateFileNameInput(event.target.value)
+                    }
+                    placeholder="inbox.md"
+                    className="w-full rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner transition focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-full border border-indigo-200 px-3 py-2 text-xs font-medium text-indigo-600 transition hover:border-indigo-500 hover:text-indigo-500 dark:border-indigo-500/60 dark:text-indigo-300"
+                  >
+                    更新
+                  </button>
+                </div>
+              </form>
+
+              {settings.categories.length ? (
+                <ul className="mt-4 space-y-3">
+                  {settings.categories.map((category) => {
+                    const draft = categoryDrafts[category.id] ?? {
+                      label: category.label,
+                      folder: category.folder,
+                    };
+                    return (
+                      <li
+                        key={category.id}
+                        className="rounded-xl border border-zinc-200 bg-white/80 p-4 text-sm dark:border-zinc-700 dark:bg-zinc-900/70"
+                      >
+                        <div className="flex flex-col gap-3">
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                            カテゴリ名
+                            <input
+                              value={draft.label}
+                              onChange={(
+                                event: ChangeEvent<HTMLInputElement>,
+                              ) =>
+                                setCategoryDrafts((prev) => {
+                                  const prevEntry = prev[category.id] ?? {
+                                    label: category.label,
+                                    folder: category.folder,
+                                  };
+                                  const nextLabel = event.target.value;
+                                  const shouldSyncFolder =
+                                    prevEntry.folder ===
+                                      slugify(prevEntry.label) ||
+                                    prevEntry.folder === category.folder;
+                                  return {
+                                    ...prev,
+                                    [category.id]: {
+                                      label: nextLabel,
+                                      folder: shouldSyncFolder
+                                        ? slugify(nextLabel)
+                                        : prevEntry.folder,
+                                    },
+                                  };
+                                })
+                              }
+                              onBlur={() =>
+                                void handleCategoryBlur(category.id, draft)
+                              }
+                              className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                            サブフォルダ名
+                            <input
+                              value={draft.folder}
+                              onChange={(
+                                event: ChangeEvent<HTMLInputElement>,
+                              ) =>
+                                setCategoryDrafts((prev) => {
+                                  const prevEntry = prev[category.id] ?? draft;
+                                  return {
+                                    ...prev,
+                                    [category.id]: {
+                                      label: prevEntry.label,
+                                      folder: event.target.value,
+                                    },
+                                  };
+                                })
+                              }
+                              onBlur={() =>
+                                void handleCategoryBlur(category.id, draft)
+                              }
+                              className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                            />
+                          </label>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <label className="inline-flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                              <input
+                                type="checkbox"
+                                checked={category.aggregate}
+                                onChange={(event) =>
+                                  void toggleCategoryAggregate(
+                                    category.id,
+                                    event.target.checked,
+                                  )
+                                }
+                                className="size-4 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-600"
+                              />
+                              集約ファイル（{settings.categoryAggregateFileName}
+                              ）に保存
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => void removeCategory(category.id)}
+                              className="inline-flex items-center justify-center rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-500 transition hover:border-rose-400 hover:text-rose-500 dark:border-rose-500/60 dark:text-rose-300"
+                            >
+                              削除
+                            </button>
+                          </div>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                            保存パス例: {draft.folder || slugify(draft.label)}/
+                            {category.aggregate
+                              ? settings.categoryAggregateFileName
+                              : "<ページタイトル>.md"}
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                  まだカテゴリがありません。上のフォームから追加してください。
+                </p>
+              )}
+            </div>
           </div>
         </section>
 

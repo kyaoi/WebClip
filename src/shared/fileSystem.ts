@@ -17,7 +17,7 @@ export async function listMarkdownFiles(): Promise<string[]> {
   }
   const files: string[] = [];
   await traverse(root, "", files);
-  return files;
+  return files.sort((a, b) => a.localeCompare(b, "ja"));
 }
 
 async function traverse(
@@ -63,6 +63,29 @@ export async function resolveTargetHandle(
   return current.getFileHandle(fileName, {
     create: target.createIfMissing ?? false,
   });
+}
+
+export function clipTargetFromPath(
+  path: string,
+  createIfMissing = false,
+): ClipTarget {
+  const segments = path
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!segments.length) {
+    return {
+      path: [],
+      fileName: ensureMarkdownExtension("note.md"),
+      createIfMissing,
+    };
+  }
+  const fileName = segments.pop() ?? "note.md";
+  return {
+    path: segments,
+    fileName: ensureMarkdownExtension(fileName),
+    createIfMissing,
+  };
 }
 
 async function readFileText(handle: FileSystemFileHandle): Promise<string> {

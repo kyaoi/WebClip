@@ -1,4 +1,4 @@
-import { appendEntry } from "../shared/fileSystem";
+import { appendEntry, clipTargetFromPath } from "../shared/fileSystem";
 import {
   domainSegmentsFromUrl,
   formatTimestamp,
@@ -15,8 +15,11 @@ import type {
 } from "../shared/types";
 
 const MENU_PER_PAGE = "webclip:context:per-page";
+const MENU_SINGLE_FILE = "webclip:context:single-file";
+const MENU_CATEGORY = "webclip:context:category";
 const MENU_EXISTING = "webclip:context:existing";
 const PICKER_URL = chrome.runtime.getURL("src/picker/index.html");
+const CATEGORY_PICKER_URL = chrome.runtime.getURL("src/category/index.html");
 
 interface PendingRequest {
   context: SelectionContext;
@@ -39,21 +42,42 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab?.id) {
     return;
   }
-  if (info.menuItemId !== MENU_PER_PAGE && info.menuItemId !== MENU_EXISTING) {
-    return;
+  let mode: ClipMode | null = null;
+  switch (info.menuItemId) {
+    case MENU_PER_PAGE:
+      mode = "perPage";
+      break;
+    case MENU_SINGLE_FILE:
+      mode = "singleFile";
+      break;
+    case MENU_CATEGORY:
+      mode = "category";
+      break;
+    case MENU_EXISTING:
+      mode = "existingFilePick";
+      break;
+    default:
+      return;
   }
-  const mode =
-    info.menuItemId === MENU_PER_PAGE ? "perPage" : "existingFilePick";
   try {
     const context = await requestSelectionContext(tab.id);
     if (!context.selection.trim()) {
       await showNotification("WebClip", "テキストが選択されていません。");
       return;
     }
-    if (mode === "perPage") {
-      await handlePerPageClip(context);
-    } else {
-      await handleExistingFileClip(tab.id, context);
+    switch (mode) {
+      case "perPage":
+        await handlePerPageClip(context);
+        break;
+      case "singleFile":
+        await handleSingleFileClip(context);
+        break;
+      case "category":
+        await handleCategoryClip(tab.id, context);
+        break;
+      case "existingFilePick":
+        await handleExistingFileClip(tab.id, context);
+        break;
     }
   } catch (error) {
     const message =
@@ -70,7 +94,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const { requestId } = message as { requestId: string };
     void (async () => {
       const pending = pendingRequests.get(requestId);
-      if (!pending) {
+      if (!pending || pending.mode !== "existingFilePick") {
         sendResponse({
           ok: false,
           error: "保存リクエストが見つかりませんでした。",
@@ -94,7 +118,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }: { requestId: string; path: string; createIfMissing: boolean } = message;
     void (async () => {
       const pending = pendingRequests.get(requestId);
-      if (!pending) {
+      if (!pending || pending.mode !== "existingFilePick") {
         sendResponse({
           ok: false,
           error: "保存リクエストが見つかりませんでした。",
@@ -102,7 +126,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
       const { context, pickerWindowId } = pending;
-      const target = buildTargetFromPath(path, createIfMissing);
+      const target = clipTargetFromPath(path, createIfMissing);
       const result = await processClipWithTarget(context, target);
       await finalizeRequest(requestId, result, path);
       sendResponse({ ok: true, result });
@@ -116,7 +140,85 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const { requestId }: { requestId: string } = message;
     void (async () => {
       const pending = pendingRequests.get(requestId);
-      if (!pending) {
+      if (!pending || pending.mode !== "existingFilePick") {
+        sendResponse({ ok: false });
+        return;
+      }
+      const { pickerWindowId } = pending;
+      pendingRequests.delete(requestId);
+      if (pickerWindowId !== undefined) {
+        await removeWindow(pickerWindowId);
+      }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+  if (message.type === "webclip:category:init") {
+    const { requestId } = message as { requestId: string };
+    void (async () => {
+      const pending = pendingRequests.get(requestId);
+      if (!pending || pending.mode !== "category") {
+        sendResponse({
+          ok: false,
+          error: "保存リクエストが見つかりませんでした。",
+        });
+        return;
+      }
+      const settings = await getSettings();
+      sendResponse({
+        ok: true,
+        context: pending.context,
+        settings,
+      });
+    })();
+    return true;
+  }
+  if (message.type === "webclip:category:save") {
+    const { requestId, categoryId } = message as {
+      requestId: string;
+      categoryId: string;
+    };
+    void (async () => {
+      const pending = pendingRequests.get(requestId);
+      if (!pending || pending.mode !== "category") {
+        sendResponse({
+          ok: false,
+          error: "保存リクエストが見つかりませんでした。",
+        });
+        return;
+      }
+      const { context, pickerWindowId } = pending;
+      const settings = await getSettings();
+      const category = settings.categories.find(
+        (item) => item.id === categoryId,
+      );
+      if (!category) {
+        sendResponse({
+          ok: false,
+          error: "カテゴリが見つかりませんでした。",
+        });
+        return;
+      }
+      const fileBase = slugify(context.title);
+      const pathString = category.aggregate
+        ? `${category.folder}/${settings.categoryAggregateFileName}`
+        : `${category.folder}/${fileBase}.md`;
+      const target = clipTargetFromPath(pathString, true);
+      const displayPath = [...target.path, target.fileName].join("/");
+      const result = await processClipWithTarget(context, target);
+      await finalizeRequest(requestId, result, displayPath);
+      sendResponse({ ok: true, result });
+      if (pickerWindowId !== undefined) {
+        await removeWindow(pickerWindowId);
+      }
+    })();
+    return true;
+  }
+  if (message.type === "webclip:category:cancel") {
+    const { requestId } = message as { requestId: string };
+    void (async () => {
+      const pending = pendingRequests.get(requestId);
+      if (!pending || pending.mode !== "category") {
         sendResponse({ ok: false });
         return;
       }
@@ -135,7 +237,17 @@ function setupContextMenus(): void {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_PER_PAGE,
-      title: "Save to Markdown",
+      title: "Save to Markdown (per page)",
+      contexts: ["selection"],
+    });
+    chrome.contextMenus.create({
+      id: MENU_SINGLE_FILE,
+      title: "Save to inbox file",
+      contexts: ["selection"],
+    });
+    chrome.contextMenus.create({
+      id: MENU_CATEGORY,
+      title: "Save to category…",
       contexts: ["selection"],
     });
     chrome.contextMenus.create({
@@ -183,6 +295,22 @@ async function handlePerPageClip(context: SelectionContext): Promise<void> {
   await notifyClipResult(context, result);
 }
 
+async function handleSingleFileClip(context: SelectionContext): Promise<void> {
+  const settings = await getSettings();
+  const path = settings.singleFilePath.trim();
+  if (!path) {
+    await showNotification(
+      "WebClip",
+      "単一ファイルの保存先が設定されていません。オプションで設定してください。",
+    );
+    return;
+  }
+  const target = clipTargetFromPath(path, true);
+  const displayPath = [...target.path, target.fileName].join("/");
+  const result = await processClipWithTarget(context, target);
+  await notifyClipResult(context, result, displayPath);
+}
+
 async function handleExistingFileClip(
   tabId: number,
   context: SelectionContext,
@@ -204,6 +332,40 @@ async function handleExistingFileClip(
   }
 }
 
+async function handleCategoryClip(
+  tabId: number,
+  context: SelectionContext,
+): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.categories.length) {
+    await showNotification(
+      "WebClip",
+      "カテゴリが設定されていません。オプションで追加してください。",
+    );
+    return;
+  }
+  const requestId = crypto.randomUUID();
+  pendingRequests.set(requestId, {
+    context,
+    mode: "category",
+    tabId,
+  });
+  const url = new URL(CATEGORY_PICKER_URL);
+  url.searchParams.set("requestId", requestId);
+  const summary = summarizeSelection(context.selection, 80);
+  url.searchParams.set("preview", summary);
+  try {
+    const windowId = await createPickerWindow(url.toString());
+    const pending = pendingRequests.get(requestId);
+    if (pending) {
+      pending.pickerWindowId = windowId;
+    }
+  } catch (error) {
+    pendingRequests.delete(requestId);
+    throw error;
+  }
+}
+
 async function createPickerWindow(url: string): Promise<number> {
   return new Promise((resolve, reject) => {
     chrome.windows.create(
@@ -218,7 +380,7 @@ async function createPickerWindow(url: string): Promise<number> {
           reject(
             new Error(
               chrome.runtime.lastError?.message ??
-                "ファイル選択ウィンドウを開けませんでした。",
+                "選択ウィンドウを開けませんでした。",
             ),
           );
           return;
@@ -233,29 +395,6 @@ async function removeWindow(windowId: number): Promise<void> {
   return new Promise((resolve) => {
     chrome.windows.remove(windowId, () => resolve());
   });
-}
-
-function buildTargetFromPath(
-  path: string,
-  createIfMissing: boolean,
-): ClipTarget {
-  const segments = path
-    .split("/")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (segments.length === 0) {
-    return {
-      path: [],
-      fileName: "note.md",
-      createIfMissing,
-    };
-  }
-  const fileName = segments.pop() ?? "note.md";
-  return {
-    path: segments,
-    fileName,
-    createIfMissing,
-  };
 }
 
 async function processClipDefaultTarget(

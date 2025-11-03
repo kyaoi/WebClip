@@ -2,8 +2,8 @@ import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { loadRootDirectoryHandle } from "../shared/handles";
 import { getSettings, updateSettings } from "../shared/settings";
-import type { Settings, ThemePreference } from "../shared/types";
 import { applyTheme } from "../shared/theme";
+import type { Settings, ThemePreference } from "../shared/types";
 
 function App(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -77,6 +77,47 @@ function App(): JSX.Element {
           >
             設定を開く
           </button>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            保存スタイル
+          </h2>
+          <ul className="mt-2 space-y-1 text-sm text-zinc-600 dark:text-zinc-300">
+            <li>
+              単一ファイル: <code>{settings.singleFilePath}</code>
+            </li>
+            <li>
+              ドメイン分類: {settings.useDomainSubfolders ? "有効" : "無効"}
+            </li>
+          </ul>
+          <div className="mt-3 rounded-xl border border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-400">
+            <p className="font-semibold text-zinc-600 dark:text-zinc-300">
+              カテゴリ一覧
+            </p>
+            {settings.categories.length ? (
+              <ul className="mt-1 space-y-1">
+                {settings.categories.map((category) => (
+                  <li
+                    key={category.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span>{category.label}</span>
+                    <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                      {category.aggregate
+                        ? `${category.folder}/${settings.categoryAggregateFileName}`
+                        : `${category.folder}/<タイトル>.md`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1">カテゴリは未設定です。</p>
+            )}
+            <p className="mt-2 text-[11px] text-zinc-400 dark:text-zinc-500">
+              詳細は「設定を開く」から変更できます。
+            </p>
+          </div>
         </section>
 
         <section className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">

@@ -1,4 +1,8 @@
-export type ClipMode = "perPage" | "existingFilePick";
+export type ClipMode =
+  | "perPage"
+  | "existingFilePick"
+  | "singleFile"
+  | "category";
 
 export interface SelectionContext {
   selection: string;
@@ -38,15 +42,28 @@ export interface ClipResult {
 
 export type ThemePreference = "system" | "light" | "dark";
 
+export interface CategorySetting {
+  id: string;
+  label: string;
+  folder: string;
+  aggregate: boolean;
+}
+
 export interface Settings {
   theme: ThemePreference;
   useDomainSubfolders: boolean;
   mruFiles: string[];
   rootFolderName?: string;
+  singleFilePath: string;
+  categories: CategorySetting[];
+  categoryAggregateFileName: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   useDomainSubfolders: true,
   mruFiles: [],
+  singleFilePath: "inbox.md",
+  categories: [],
+  categoryAggregateFileName: "inbox.md",
 };
