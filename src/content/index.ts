@@ -1,4 +1,3 @@
-import { buildTextFragment } from "../shared/format";
 import type { SelectionContext } from "../shared/types";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -29,15 +28,15 @@ function collectSelectionContext(): SelectionContext | undefined {
     return undefined;
   }
   const link = findNearestLink(selection);
-  const textFragment = buildTextFragment(selectionText);
   const sourceUrl = new URL(window.location.href);
-  const base = `${sourceUrl.origin}${sourceUrl.pathname}${sourceUrl.search}`;
-  const fragment = textFragment?.slice(1) ?? "";
-  const textFragmentUrl = fragment
-    ? sourceUrl.hash
-      ? `${base}${sourceUrl.hash}&${fragment}`
-      : `${base}#${fragment}`
-    : sourceUrl.toString();
+  const hash = sourceUrl.hash;
+  if (hash.includes(":~:text=")) {
+    const anchorPart = hash
+      .slice(1, hash.indexOf(":~:text="))
+      .replace(/&$/, "");
+    sourceUrl.hash = anchorPart;
+  }
+  const textFragmentUrl = sourceUrl.toString();
   const context: SelectionContext = {
     selection: selectionText,
     baseUrl: sourceUrl.toString(),
