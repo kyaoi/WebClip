@@ -27,7 +27,7 @@ export default defineManifest({
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],
-      resources: ["src/picker/index.html"],
+      resources: ["src/picker/index.html", "src/category/index.html"],
     },
   ],
   icons: {

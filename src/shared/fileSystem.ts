@@ -17,7 +17,17 @@ export async function listMarkdownFiles(): Promise<string[]> {
   }
   const files: string[] = [];
   await traverse(root, "", files);
-  return files;
+  return files.sort((a, b) => a.localeCompare(b, "ja"));
+}
+
+export async function listFolders(): Promise<string[]> {
+  const root = await loadRootDirectoryHandle({ requestAccess: true });
+  if (!root) {
+    return [];
+  }
+  const folders: string[] = [];
+  await traverseFolders(root, "", folders);
+  return folders.sort((a, b) => a.localeCompare(b, "ja"));
 }
 
 async function traverse(
@@ -46,6 +56,33 @@ async function traverse(
   }
 }
 
+async function traverseFolders(
+  dir: FileSystemDirectoryHandle,
+  prefix: string,
+  output: string[],
+): Promise<void> {
+  if (!dir.values) {
+    return;
+  }
+  for await (const handle of dir.values()) {
+    if (handle.kind === "directory") {
+      const current = `${prefix}${handle.name}`;
+      output.push(current);
+      if (output.length >= 500) {
+        return;
+      }
+      await traverseFolders(
+        handle as FileSystemDirectoryHandle,
+        `${current}/`,
+        output,
+      );
+      if (output.length >= 500) {
+        return;
+      }
+    }
+  }
+}
+
 export async function resolveTargetHandle(
   target: ClipTarget,
 ): Promise<FileSystemFileHandle | undefined> {
@@ -63,6 +100,29 @@ export async function resolveTargetHandle(
   return current.getFileHandle(fileName, {
     create: target.createIfMissing ?? false,
   });
+}
+
+export function clipTargetFromPath(
+  path: string,
+  createIfMissing = false,
+): ClipTarget {
+  const segments = path
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!segments.length) {
+    return {
+      path: [],
+      fileName: ensureMarkdownExtension("note.md"),
+      createIfMissing,
+    };
+  }
+  const fileName = segments.pop() ?? "note.md";
+  return {
+    path: segments,
+    fileName: ensureMarkdownExtension(fileName),
+    createIfMissing,
+  };
 }
 
 async function readFileText(handle: FileSystemFileHandle): Promise<string> {
