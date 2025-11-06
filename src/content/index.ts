@@ -411,8 +411,10 @@ function serializeLink(
   state: MarkdownState,
 ): string {
   const href = element.getAttribute("href") ?? "";
-  const text = serializeChildren(element, state, true).trim();
-  const label = text || href;
+  const label = serializeChildren(element, state, true).trim();
+  if (!label) {
+    return "";
+  }
   if (!href) {
     return label;
   }
@@ -439,17 +441,36 @@ function serializeImage(element: HTMLImageElement): string {
 
 function resolveImageSource(element: HTMLImageElement): string {
   const base = document.baseURI;
-  const candidates: (string | null | undefined)[] = [
+  const attributeCandidates = [
     element.currentSrc,
     element.getAttribute("src"),
     element.getAttribute("data-src"),
     element.getAttribute("data-lazy-src"),
     element.getAttribute("data-original"),
+    element.getAttribute("data-original-src"),
     element.getAttribute("data-zoom-src"),
+    element.getAttribute("data-src-large"),
+    element.getAttribute("data-src-full"),
+    element.getAttribute("data-src-hd"),
+    element.getAttribute("data-src-retina"),
+    element.getAttribute("data-image"),
+    element.getAttribute("data-image-src"),
+    element.getAttribute("data-canonical-src"),
+    element.getAttribute("data-hires"),
+    element.getAttribute("data-medium-file"),
+    element.getAttribute("data-large-file"),
+    element.getAttribute("data-url"),
   ];
+  const datasetCandidates = Object.entries(element.dataset ?? {})
+    .filter(
+      ([key, value]) => Boolean(value) && /src|source|image|url/i.test(key),
+    )
+    .map(([, value]) => value ?? "");
   const srcsetCandidates = [
     element.getAttribute("srcset"),
     element.getAttribute("data-srcset"),
+    element.getAttribute("data-lazy-srcset"),
+    element.getAttribute("data-responsive-srcset"),
   ]
     .filter((value): value is string => Boolean(value))
     .flatMap((value) =>
@@ -460,7 +481,11 @@ function resolveImageSource(element: HTMLImageElement): string {
         .map((item) => item.split(/\s+/)[0] ?? ""),
     )
     .filter(Boolean);
-  const resolvedCandidates = [...candidates, ...srcsetCandidates];
+  const resolvedCandidates = [
+    ...attributeCandidates,
+    ...datasetCandidates,
+    ...srcsetCandidates,
+  ];
   for (const candidate of resolvedCandidates) {
     if (!candidate) {
       continue;
@@ -468,6 +493,9 @@ function resolveImageSource(element: HTMLImageElement): string {
     try {
       return new URL(candidate, base).toString();
     } catch {
+      if (candidate.startsWith("data:")) {
+        return candidate;
+      }
       // ignore invalid URLs
     }
   }
