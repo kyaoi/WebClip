@@ -6,6 +6,7 @@ export type ClipMode =
 
 export interface SelectionContext {
   selection: string;
+  markdown: string;
   baseUrl: string;
   title: string;
   createdAt: string;

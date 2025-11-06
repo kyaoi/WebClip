@@ -421,7 +421,7 @@ async function processClipWithTarget(
   context: SelectionContext,
   target: ClipTarget,
 ): Promise<ClipResult> {
-  const hash = await sha1Hex(`${context.selection}|${context.baseUrl}`);
+  const hash = await sha1Hex(`${context.markdown}|${context.baseUrl}`);
   const entry = buildMarkdownEntry(context);
   const result = await appendEntry(target, entry, hash);
   if (result.status === "ok" && result.filePath) {
@@ -432,17 +432,17 @@ async function processClipWithTarget(
 
 function buildMarkdownEntry(context: SelectionContext): string {
   const timestamp = formatTimestamp(new Date(context.createdAt));
-  const quoteLines = context.selection
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => `> ${line}`)
-    .join("\n");
-  const lines = [`### ${timestamp}`, quoteLines, ""];
-  lines.push(`- source: [${context.title}](${context.textFragmentUrl})`);
+  const content = context.markdown.trim();
+  const lines = [`### ${timestamp}`];
+  if (content) {
+    lines.push("", content);
+  }
+  const metadata = [`- source: [${context.title}](${context.textFragmentUrl})`];
   if (context.link) {
     const linkText = context.link.text.trim() || context.link.href;
-    lines.push(`- link: [${linkText}](${context.link.href})`);
+    metadata.push(`- link: [${linkText}](${context.link.href})`);
   }
+  lines.push("", ...metadata);
   return lines.join("\n");
 }
 
