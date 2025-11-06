@@ -433,17 +433,9 @@ async function processClipWithTarget(
 function buildMarkdownEntry(context: SelectionContext): string {
   const timestamp = formatTimestamp(new Date(context.createdAt));
   const content = context.markdown.trim();
-  const bodySections: string[] = [];
-  if (content) {
-    bodySections.push(content);
-  }
-  if (context.link) {
-    const linkText = context.link.text.trim() || context.link.href;
-    bodySections.push(`- link: [${linkText}](${context.link.href})`);
-  }
   const lines = [`### ${timestamp}`, "---"];
-  if (bodySections.length > 0) {
-    lines.push(bodySections.join("\n\n"));
+  if (content) {
+    lines.push(content);
   }
   lines.push(
     "",

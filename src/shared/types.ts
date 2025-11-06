@@ -11,10 +11,6 @@ export interface SelectionContext {
   title: string;
   createdAt: string;
   textFragmentUrl: string;
-  link?: {
-    text: string;
-    href: string;
-  };
 }
 
 export interface ClipTarget {
