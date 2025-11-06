@@ -238,7 +238,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 function setupContextMenus(): void {
   chrome.contextMenus.removeAll(() => {
-    const contexts: chrome.contextMenus.ContextType[] = ["selection", "image"];
+    const contexts: [
+      `${chrome.contextMenus.ContextType}`,
+      ...`${chrome.contextMenus.ContextType}`[],
+    ] = [
+      chrome.contextMenus.ContextType.SELECTION,
+      chrome.contextMenus.ContextType.IMAGE,
+    ];
     chrome.contextMenus.create({
       id: MENU_PER_PAGE,
       title: "Save to Markdown (per page)",
