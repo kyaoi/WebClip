@@ -238,25 +238,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 function setupContextMenus(): void {
   chrome.contextMenus.removeAll(() => {
+    const contexts: [
+      `${chrome.contextMenus.ContextType}`,
+      ...`${chrome.contextMenus.ContextType}`[],
+    ] = [
+      chrome.contextMenus.ContextType.SELECTION,
+      chrome.contextMenus.ContextType.IMAGE,
+    ];
     chrome.contextMenus.create({
       id: MENU_PER_PAGE,
       title: "Save to Markdown (per page)",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_SINGLE_FILE,
       title: "Save to inbox file",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_CATEGORY,
       title: "Save to category…",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_EXISTING,
       title: "Save to existing file…",
-      contexts: ["selection"],
+      contexts,
     });
   });
 }
@@ -421,7 +428,7 @@ async function processClipWithTarget(
   context: SelectionContext,
   target: ClipTarget,
 ): Promise<ClipResult> {
-  const hash = await sha1Hex(`${context.selection}|${context.baseUrl}`);
+  const hash = await sha1Hex(`${context.markdown}|${context.baseUrl}`);
   const entry = buildMarkdownEntry(context);
   const result = await appendEntry(target, entry, hash);
   if (result.status === "ok" && result.filePath) {
@@ -432,17 +439,16 @@ async function processClipWithTarget(
 
 function buildMarkdownEntry(context: SelectionContext): string {
   const timestamp = formatTimestamp(new Date(context.createdAt));
-  const quoteLines = context.selection
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => `> ${line}`)
-    .join("\n");
-  const lines = [`### ${timestamp}`, quoteLines, ""];
-  lines.push(`- source: [${context.title}](${context.textFragmentUrl})`);
-  if (context.link) {
-    const linkText = context.link.text.trim() || context.link.href;
-    lines.push(`- link: [${linkText}](${context.link.href})`);
+  const content = context.markdown.trim();
+  const lines = [`### ${timestamp}`];
+  if (content) {
+    lines.push(content);
   }
+  lines.push(
+    "",
+    `### source: [${context.title}](${context.textFragmentUrl})`,
+    "---",
+  );
   return lines.join("\n");
 }
 

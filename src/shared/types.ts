@@ -6,14 +6,11 @@ export type ClipMode =
 
 export interface SelectionContext {
   selection: string;
+  markdown: string;
   baseUrl: string;
   title: string;
   createdAt: string;
   textFragmentUrl: string;
-  link?: {
-    text: string;
-    href: string;
-  };
 }
 
 export interface ClipTarget {
