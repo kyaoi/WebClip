@@ -65,8 +65,28 @@ function buildSelectionMarkdown(selection: Selection): string {
   const markdown = serializeChildren(container, {
     listDepth: 0,
     blockquoteDepth: 0,
-  });
-  return markdown.trim();
+  }).trim();
+  if (markdown) {
+    return markdown;
+  }
+  return serializeImageOnlySelection(container);
+}
+
+function serializeImageOnlySelection(container: HTMLElement): string {
+  const images = Array.from(
+    container.querySelectorAll("img"),
+  ) as HTMLImageElement[];
+  if (!images.length) {
+    return "";
+  }
+  const serialized = images
+    .filter((image) => !image.hidden)
+    .map((image) => serializeImage(image).trim())
+    .filter(Boolean);
+  if (!serialized.length) {
+    return "";
+  }
+  return serialized.join("\n\n");
 }
 
 interface MarkdownState {
