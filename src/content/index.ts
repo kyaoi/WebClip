@@ -164,17 +164,46 @@ const BLOCK_TAGS = new Set([
   "H5",
   "H6",
   "TABLE",
+  "CAPTION",
   "THEAD",
   "TBODY",
+  "TFOOT",
   "TR",
   "TD",
   "TH",
   "HR",
+  "DETAILS",
+  "SUMMARY",
+  "DL",
+  "DT",
+  "DD",
 ]);
 
 function sanitizeFragment(container: HTMLElement): void {
+  const commentWalker = document.createTreeWalker(
+    container,
+    NodeFilter.SHOW_COMMENT,
+  );
+  const comments: Comment[] = [];
+  while (commentWalker.nextNode()) {
+    const current = commentWalker.currentNode;
+    if (current instanceof Comment) {
+      comments.push(current);
+    }
+  }
+  comments.forEach((comment) => {
+    comment.remove();
+  });
   container.querySelectorAll("script, style, noscript").forEach((node) => {
     node.remove();
+  });
+  container.querySelectorAll("picture").forEach((picture) => {
+    const img = picture.querySelector("img");
+    if (img) {
+      picture.replaceWith(img);
+    } else {
+      picture.remove();
+    }
   });
   const base = document.baseURI;
   container.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((anchor) => {
@@ -283,6 +312,20 @@ function serializeNode(
       }
       return `*${content}*`;
     }
+    case "MARK": {
+      const content = serializeChildren(element, state, true).trim();
+      if (!content) {
+        return "";
+      }
+      return `==${content}==`;
+    }
+    case "U": {
+      const content = serializeChildren(element, state, true).trim();
+      if (!content) {
+        return "";
+      }
+      return `++${content}++`;
+    }
     case "DEL": {
       const content = serializeChildren(element, state, true).trim();
       if (!content) {
@@ -290,17 +333,25 @@ function serializeNode(
       }
       return `~~${content}~~`;
     }
+    case "SUP": {
+      const content = serializeChildren(element, state, true).trim();
+      if (!content) {
+        return "";
+      }
+      return `^${content}^`;
+    }
+    case "SUB": {
+      const content = serializeChildren(element, state, true).trim();
+      if (!content) {
+        return "";
+      }
+      return `~${content}~`;
+    }
     case "CODE": {
       if (element.parentElement?.tagName === "PRE") {
         return "";
       }
-      const text = element.textContent ?? "";
-      if (!text) {
-        return "";
-      }
-      const normalized = text.replace(/\s+/g, " ");
-      const fence = normalized.includes("`") ? "``" : "`";
-      return `${fence}${normalized}${fence}`;
+      return serializeInlineCode(element);
     }
     case "PRE":
       return serializeCodeBlock(element);
@@ -308,22 +359,27 @@ function serializeNode(
       return serializeLink(element as HTMLAnchorElement, state);
     case "IMG":
       return serializeImage(element as HTMLImageElement);
+    case "VIDEO":
+    case "AUDIO":
+      return serializeMedia(element as HTMLMediaElement);
     case "UL":
       return serializeList(element, state, false);
     case "OL":
       return serializeList(element, state, true);
-    case "LI": {
-      const content = serializeChildren(element, {
-        ...state,
-        listDepth: state.listDepth + 1,
-      }).trim();
-      if (!content) {
-        return "";
-      }
-      return `- ${content}\n`;
-    }
+    case "LI":
+      return serializeLooseListItem(element as HTMLLIElement, state);
     case "BLOCKQUOTE":
       return serializeBlockquote(element, state);
+    case "DETAILS":
+      return serializeDetails(element, state);
+    case "SUMMARY": {
+      const content = serializeChildren(element, state, true).trim();
+      return content ? `**${content}**` : "";
+    }
+    case "FIGURE":
+      return serializeFigure(element, state);
+    case "TABLE":
+      return serializeTable(element as HTMLTableElement, state);
     case "HR":
       return "---\n\n";
     case "SPAN":
@@ -360,7 +416,9 @@ function serializeLink(
   if (!href) {
     return label;
   }
-  return `[${label}](${href})`;
+  const title = element.getAttribute("title") ?? "";
+  const titlePart = title ? ` "${escapeAttributeValue(title)}"` : "";
+  return `[${label}](${href}${titlePart})`;
 }
 
 function serializeImage(element: HTMLImageElement): string {
@@ -374,7 +432,9 @@ function serializeImage(element: HTMLImageElement): string {
     element.getAttribute("aria-label") ??
     "";
   const escapedAlt = escapeMarkdownText(alt);
-  return `![${escapedAlt}](${src})`;
+  const title = element.getAttribute("title") ?? "";
+  const titlePart = title ? ` "${escapeAttributeValue(title)}"` : "";
+  return `![${escapedAlt}](${src}${titlePart})`;
 }
 
 function serializeCodeBlock(element: HTMLElement): string {
@@ -418,30 +478,73 @@ function serializeList(
   if (!items.length) {
     return "";
   }
-  const indent = "  ".repeat(state.listDepth);
+  const startIndex =
+    ordered && element instanceof HTMLOListElement
+      ? Number.parseInt(
+          element.getAttribute("start") ?? `${element.start ?? 1}`,
+          10,
+        ) || 1
+      : 1;
   const lines: string[] = [];
   items.forEach((item, index) => {
-    const marker = ordered ? `${index + 1}. ` : "- ";
-    const content = serializeChildren(item, {
-      ...state,
-      listDepth: state.listDepth + 1,
-    }).trim();
-    if (!content) {
-      lines.push(`${indent}${marker}`.trimEnd());
+    const order = ordered ? startIndex + index : index + 1;
+    const itemLines = serializeListItem(item, state, ordered, order);
+    lines.push(...itemLines);
+  });
+  if (!lines.length) {
+    return "";
+  }
+  return `${lines.join("\n")}\n\n`;
+}
+
+function serializeListItem(
+  item: HTMLLIElement,
+  state: MarkdownState,
+  ordered: boolean,
+  order: number,
+): string[] {
+  const indent = "  ".repeat(state.listDepth);
+  const marker = ordered ? `${order}. ` : "- ";
+  const clone = item.cloneNode(true) as HTMLLIElement;
+  const task = extractTaskInfo(clone);
+  const content = serializeChildren(clone, {
+    ...state,
+    listDepth: state.listDepth + 1,
+  })
+    .replace(/^[\n\r]+/, "")
+    .replace(/[\n\r]+$/, "");
+  if (!content.trim()) {
+    return [`${indent}${marker}${task.prefix}`.trimEnd()];
+  }
+  const lines = content.split(/\n/);
+  const firstLine = lines.shift() ?? "";
+  const baseIndent = indent + " ".repeat(marker.length + task.prefix.length);
+  const output: string[] = [];
+  output.push(`${indent}${marker}${task.prefix}${firstLine}`.trimEnd());
+  lines.forEach((line) => {
+    if (!line.trim()) {
+      output.push("");
       return;
     }
-    const itemLines = content.split(/\n/);
-    const first = itemLines.shift() ?? "";
-    lines.push(`${indent}${marker}${first}`);
-    itemLines.forEach((line) => {
-      if (!line.trim()) {
-        lines.push("");
-      } else {
-        lines.push(`${indent}  ${line}`);
-      }
-    });
+    const normalized = line.replace(/[\s\u00a0]+$/g, "");
+    if (/^\s/.test(normalized)) {
+      output.push(normalized);
+    } else {
+      output.push(`${baseIndent}${normalized}`);
+    }
   });
-  return `${lines.join("\n")}\n\n`;
+  return output;
+}
+
+function serializeLooseListItem(
+  item: HTMLLIElement,
+  state: MarkdownState,
+): string {
+  const lines = serializeListItem(item, state, false, 1);
+  if (!lines.length) {
+    return "";
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function serializeBlockquote(
@@ -461,6 +564,213 @@ function serializeBlockquote(
     .split(/\n/)
     .map((line) => (line ? `${prefix} ${line}` : prefix));
   return `${lines.join("\n")}\n\n`;
+}
+
+function serializeInlineCode(element: HTMLElement): string {
+  const text = element.textContent ?? "";
+  const normalized = text
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\u00a0/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  const matches = normalized.match(/`+/g);
+  const fenceLength = matches
+    ? Math.max(...matches.map((item) => item.length)) + 1
+    : 1;
+  const fence = "`".repeat(fenceLength);
+  return `${fence}${normalized}${fence}`;
+}
+
+function serializeMedia(element: HTMLMediaElement): string {
+  const src = element.currentSrc || element.getAttribute("src");
+  if (!src) {
+    return "";
+  }
+  const label =
+    element.getAttribute("aria-label") ??
+    element.getAttribute("title") ??
+    element.getAttribute("alt") ??
+    element.tagName.toLowerCase();
+  return `[${escapeMarkdownText(label)}](${src})`;
+}
+
+function serializeDetails(element: HTMLElement, state: MarkdownState): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  const summary = clone.querySelector("summary");
+  const summaryText = summary
+    ? serializeChildren(summary, state, true).trim()
+    : "";
+  summary?.remove();
+  const body = serializeChildren(clone, state, false)
+    .replace(/^[\n\r]+/, "")
+    .trim();
+  const lines: string[] = [];
+  lines.push(summaryText ? `> [!details] ${summaryText}` : "> [!details]");
+  if (body) {
+    body.split(/\n/).forEach((line) => {
+      lines.push(line ? `> ${line}` : ">");
+    });
+  }
+  return `${lines.join("\n")}\n\n`;
+}
+
+function serializeFigure(element: HTMLElement, state: MarkdownState): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  const caption = clone.querySelector("figcaption");
+  const captionText = caption
+    ? serializeChildren(caption, state, true).trim()
+    : "";
+  caption?.remove();
+  const content = serializeChildren(clone, state, false).trim();
+  if (!content) {
+    return captionText ? `${captionText}\n\n` : "";
+  }
+  if (captionText) {
+    return `${content}\n\n${captionText}\n\n`;
+  }
+  return `${content}\n\n`;
+}
+
+function serializeTable(table: HTMLTableElement, state: MarkdownState): string {
+  const rows = Array.from(
+    table.querySelectorAll("tr"),
+  ) as HTMLTableRowElement[];
+  const filtered = rows.filter((row) => row.cells.length > 0);
+  if (!filtered.length) {
+    return "";
+  }
+  const headerIndex = filtered.findIndex((row) =>
+    Array.from(row.cells).some((cell) => cell.tagName === "TH"),
+  );
+  const workingRows = [...filtered];
+  const headerRow =
+    headerIndex >= 0
+      ? workingRows.splice(headerIndex, 1)[0]
+      : workingRows.shift();
+  if (!headerRow) {
+    return "";
+  }
+  const headerCells = expandTableRow(headerRow, state);
+  const alignments = expandAlignmentRow(headerRow);
+  const bodyRows = workingRows.map((row) => expandTableRow(row, state));
+  const columnCount = Math.max(
+    headerCells.length,
+    ...bodyRows.map((row) => row.length),
+  );
+  const headerLine = `| ${padRow(headerCells, columnCount).join(" | ")} |`;
+  const dividerLine = `| ${padAlignment(alignments, columnCount).join(" | ")} |`;
+  const bodyLines = bodyRows.map(
+    (row) => `| ${padRow(row, columnCount).join(" | ")} |`,
+  );
+  const lines = [headerLine, dividerLine, ...bodyLines];
+  return `${lines.join("\n")}\n\n`;
+}
+
+function expandTableRow(
+  row: HTMLTableRowElement,
+  state: MarkdownState,
+): string[] {
+  const result: string[] = [];
+  Array.from(row.cells).forEach((cell) => {
+    const htmlCell = cell as HTMLTableCellElement;
+    const span = Math.max(1, htmlCell.colSpan || 1);
+    const content = serializeTableCell(htmlCell, state) || " ";
+    for (let index = 0; index < span; index += 1) {
+      result.push(content);
+    }
+  });
+  return result;
+}
+
+function expandAlignmentRow(row: HTMLTableRowElement): string[] {
+  const result: string[] = [];
+  Array.from(row.cells).forEach((cell) => {
+    const htmlCell = cell as HTMLTableCellElement;
+    const span = Math.max(1, htmlCell.colSpan || 1);
+    const alignment = resolveAlignment(htmlCell);
+    for (let index = 0; index < span; index += 1) {
+      result.push(alignment);
+    }
+  });
+  return result;
+}
+
+function padRow(row: string[], size: number): string[] {
+  const output = [...row];
+  while (output.length < size) {
+    output.push(" ");
+  }
+  return output;
+}
+
+function padAlignment(row: string[], size: number): string[] {
+  const output = [...row];
+  while (output.length < size) {
+    output.push("---");
+  }
+  return output.map((value) => (value ? value : "---"));
+}
+
+function serializeTableCell(
+  cell: HTMLTableCellElement,
+  state: MarkdownState,
+): string {
+  const content = serializeChildren(cell, state, false)
+    .replace(/^[\n\r]+/, "")
+    .replace(/[\n\r]+$/, "")
+    .trim();
+  if (!content) {
+    return " ";
+  }
+  return content.replace(/\n+/g, "<br>");
+}
+
+function resolveAlignment(cell: HTMLTableCellElement): string {
+  const alignmentSources = [cell.getAttribute("align"), cell.style.textAlign];
+  try {
+    alignmentSources.push(window.getComputedStyle(cell).textAlign);
+  } catch {
+    // ignore access errors
+  }
+  const alignment = alignmentSources
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase())
+    .find((value) =>
+      ["left", "center", "right", "start", "end"].includes(value),
+    );
+  switch (alignment) {
+    case "center":
+      return ":---:";
+    case "right":
+    case "end":
+      return "---:";
+    case "left":
+    case "start":
+      return ":---";
+    default:
+      return "---";
+  }
+}
+
+function extractTaskInfo(item: HTMLLIElement): { prefix: string } {
+  const checkbox = item.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
+  if (!checkbox || checkbox.closest("li") !== item) {
+    return { prefix: "" };
+  }
+  const checked =
+    checkbox.checked ||
+    checkbox.getAttribute("checked") !== null ||
+    checkbox.getAttribute("aria-checked") === "true";
+  checkbox.remove();
+  return { prefix: `[${checked ? "x" : " "}] ` };
+}
+
+function escapeAttributeValue(value: string): string {
+  return escapeMarkdownText(value).replace(/"/g, '\\"');
 }
 
 function escapeMarkdownText(input: string): string {
