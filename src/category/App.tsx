@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getActiveTemplate } from "../shared/settings";
 import { applyTheme } from "../shared/theme";
 import type {
   CategorySetting,
@@ -78,14 +79,21 @@ function App(): JSX.Element {
     }
   }, [settings]);
 
-  const categories = useMemo<CategorySetting[]>(() => {
+  const activeTemplate = useMemo(() => {
     if (!settings) {
+      return null;
+    }
+    return getActiveTemplate(settings);
+  }, [settings]);
+
+  const categories = useMemo<CategorySetting[]>(() => {
+    if (!activeTemplate) {
       return [];
     }
-    return [...settings.categories].sort((a, b) =>
+    return [...activeTemplate.categories].sort((a, b) =>
       a.label.localeCompare(b.label, "ja"),
     );
-  }, [settings]);
+  }, [activeTemplate]);
 
   const selectionSnippet = useMemo(() => {
     const text = context?.selection.trim().replace(/\s+/g, " ") ?? "";
@@ -229,10 +237,10 @@ function App(): JSX.Element {
                         disabled={saving}
                         className="rounded-lg border border-indigo-500 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-600 transition hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-400/70 dark:bg-indigo-500/20 dark:text-indigo-200"
                       >
-                        カテゴリInboxに保存
+                        カテゴリ集約ファイルに保存
                         <span className="block text-xs text-indigo-500/80 dark:text-indigo-200/80">
                           {category.folder || "(ルート)"}/
-                          {settings?.categoryAggregateFileName}
+                          {activeTemplate?.categoryAggregateFileName ?? ""}
                         </span>
                       </button>
                     </div>

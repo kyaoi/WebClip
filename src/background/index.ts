@@ -6,12 +6,19 @@ import {
   summarizeSelection,
 } from "../shared/format";
 import { sha1Hex } from "../shared/hash";
-import { getSettings, pushMruEntry } from "../shared/settings";
+import {
+  getActiveTemplate,
+  getSettings,
+  pushMruEntry,
+} from "../shared/settings";
+import { createTemplateVariables, renderTemplate } from "../shared/template";
 import type {
   ClipMode,
   ClipResult,
   ClipTarget,
   SelectionContext,
+  Settings,
+  TemplateSetting,
 } from "../shared/types";
 
 const MENU_PER_PAGE = "webclip:context:per-page";
@@ -190,7 +197,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       const { context, pickerWindowId } = pending;
       const settings = await getSettings();
-      const category = settings.categories.find(
+      const template = getActiveTemplate(settings);
+      const category = template.categories.find(
         (item) => item.id === categoryId,
       );
       if (!category) {
@@ -204,11 +212,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const useAggregate = mode ? mode === "aggregate" : category.aggregate;
       const folderPrefix = category.folder ? `${category.folder}/` : "";
       const pathString = useAggregate
-        ? `${folderPrefix}${settings.categoryAggregateFileName}`
+        ? `${folderPrefix}${template.categoryAggregateFileName}`
         : `${folderPrefix}${fileBase}.md`;
       const target = clipTargetFromPath(pathString, true);
       const displayPath = [...target.path, target.fileName].join("/");
-      const result = await processClipWithTarget(context, target);
+      const result = await processClipWithTarget(context, target, {
+        settings,
+        template,
+      });
       await finalizeRequest(requestId, result, displayPath);
       sendResponse({ ok: true, result });
       if (pickerWindowId !== undefined) {
@@ -307,7 +318,8 @@ async function handlePerPageClip(context: SelectionContext): Promise<void> {
 
 async function handleSingleFileClip(context: SelectionContext): Promise<void> {
   const settings = await getSettings();
-  const path = settings.singleFilePath.trim();
+  const template = getActiveTemplate(settings);
+  const path = template.singleFilePath.trim();
   if (!path) {
     await showNotification(
       "WebClip",
@@ -317,7 +329,10 @@ async function handleSingleFileClip(context: SelectionContext): Promise<void> {
   }
   const target = clipTargetFromPath(path, true);
   const displayPath = [...target.path, target.fileName].join("/");
-  const result = await processClipWithTarget(context, target);
+  const result = await processClipWithTarget(context, target, {
+    settings,
+    template,
+  });
   await notifyClipResult(context, result, displayPath);
 }
 
@@ -347,7 +362,8 @@ async function handleCategoryClip(
   context: SelectionContext,
 ): Promise<void> {
   const settings = await getSettings();
-  if (!settings.categories.length) {
+  const template = getActiveTemplate(settings);
+  if (!template.categories.length) {
     await showNotification(
       "WebClip",
       "カテゴリが設定されていません。オプションで追加してください。",
@@ -412,7 +428,8 @@ async function processClipDefaultTarget(
 ): Promise<ClipResult> {
   const url = new URL(context.baseUrl);
   const settings = await getSettings();
-  const pathSegments = settings.useDomainSubfolders
+  const template = getActiveTemplate(settings);
+  const pathSegments = template.useDomainSubfolders
     ? domainSegmentsFromUrl(url)
     : [];
   const fileName = `${slugify(context.title)}.md`;
@@ -421,23 +438,44 @@ async function processClipDefaultTarget(
     fileName,
     createIfMissing: true,
   };
-  return processClipWithTarget(context, target);
+  return processClipWithTarget(context, target, { settings, template });
 }
 
 async function processClipWithTarget(
   context: SelectionContext,
   target: ClipTarget,
+  options: {
+    settings?: Settings;
+    template?: TemplateSetting;
+  } = {},
 ): Promise<ClipResult> {
+  const settings = options.settings ?? (await getSettings());
+  const template = options.template ?? getActiveTemplate(settings);
   const hash = await sha1Hex(`${context.markdown}|${context.baseUrl}`);
-  const entry = buildMarkdownEntry(context);
-  const result = await appendEntry(target, entry, hash);
+  const entry = buildMarkdownEntry(context, template);
+  const result = await appendEntry(target, entry, hash, {
+    context,
+    template,
+  });
   if (result.status === "ok" && result.filePath) {
     await pushMruEntry(result.filePath);
   }
   return result;
 }
 
-function buildMarkdownEntry(context: SelectionContext): string {
+function buildMarkdownEntry(
+  context: SelectionContext,
+  template: TemplateSetting,
+): string {
+  const variables = createTemplateVariables(context);
+  const base = template.entryTemplate?.trim().length
+    ? template.entryTemplate
+    : createDefaultEntryTemplate(context);
+  const rendered = renderTemplate(base, variables);
+  return rendered.replace(/\s+$/, "");
+}
+
+function createDefaultEntryTemplate(context: SelectionContext): string {
   const timestamp = formatTimestamp(new Date(context.createdAt));
   const content = context.markdown.trim();
   const lines = [`### ${timestamp}`];

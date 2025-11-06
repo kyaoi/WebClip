@@ -1,9 +1,32 @@
 import { storageGet, storageSet } from "./chromeStorage";
 import { slugify } from "./format";
-import { type CategorySetting, DEFAULT_SETTINGS, type Settings } from "./types";
+import {
+  type CategorySetting,
+  DEFAULT_ENTRY_TEMPLATE,
+  DEFAULT_SETTINGS,
+  DEFAULT_TEMPLATE_ID,
+  type Settings,
+  type TemplateFrontMatterField,
+  type TemplateSetting,
+} from "./types";
 
 const STORAGE_KEY = "webclip:settings";
 const MRU_LIMIT = 5;
+
+const DEFAULT_TEMPLATE_PRESET: TemplateSetting = DEFAULT_SETTINGS
+  .templates[0] ?? {
+  id: DEFAULT_TEMPLATE_ID,
+  name: "Template 1",
+  useDomainSubfolders: true,
+  singleFilePath: "inbox.md",
+  categories: [],
+  categoryAggregateFileName: "inbox.md",
+  frontMatter: {
+    enabled: false,
+    fields: [],
+  },
+  entryTemplate: DEFAULT_ENTRY_TEMPLATE,
+};
 
 export async function getSettings(): Promise<Settings> {
   const stored = await storageGet<Partial<Settings>>(STORAGE_KEY);
@@ -28,19 +51,125 @@ export async function pushMruEntry(path: string): Promise<Settings> {
   return settings;
 }
 
-function normalizeSettings(settings: Settings): Settings {
-  const singleFilePath = settings.singleFilePath.trim() || "inbox.md";
-  const aggregateFileName =
-    settings.categoryAggregateFileName.trim() || "inbox.md";
-  const categories = (settings.categories ?? [])
+export function getTemplateById(
+  settings: Settings,
+  templateId: string,
+): TemplateSetting | undefined {
+  return settings.templates.find((template) => template.id === templateId);
+}
+
+export function getActiveTemplate(settings: Settings): TemplateSetting {
+  return (
+    getTemplateById(settings, settings.activeTemplateId) ??
+    settings.templates[0] ??
+    DEFAULT_TEMPLATE_PRESET
+  );
+}
+
+type LegacySettings = Partial<Settings> & {
+  singleFilePath?: string;
+  useDomainSubfolders?: boolean;
+  categories?: CategorySetting[];
+  categoryAggregateFileName?: string;
+  templates?: Partial<TemplateSetting>[];
+};
+
+function normalizeSettings(raw: Settings | LegacySettings): Settings {
+  const theme = raw.theme ?? DEFAULT_SETTINGS.theme;
+  const mruFiles = Array.isArray(raw.mruFiles) ? raw.mruFiles : [];
+  const rootFolderName = raw.rootFolderName;
+  const templates = normalizeTemplates(raw);
+  const activeTemplateId =
+    raw.activeTemplateId &&
+    templates.some((item) => item.id === raw.activeTemplateId)
+      ? raw.activeTemplateId
+      : (templates[0]?.id ?? DEFAULT_TEMPLATE_ID);
+  return {
+    theme,
+    mruFiles,
+    rootFolderName,
+    activeTemplateId,
+    templates,
+  };
+}
+
+function normalizeTemplates(raw: LegacySettings): TemplateSetting[] {
+  const inputTemplates = Array.isArray(raw.templates) ? raw.templates : null;
+  const templates = (inputTemplates ?? []).map((item) =>
+    normalizeTemplate(item),
+  );
+  const normalized = templates.filter(
+    (item): item is TemplateSetting => item !== undefined,
+  );
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  const legacy: TemplateSetting = {
+    id: DEFAULT_TEMPLATE_ID,
+    name: "Template 1",
+    useDomainSubfolders:
+      raw.useDomainSubfolders ?? DEFAULT_TEMPLATE_PRESET.useDomainSubfolders,
+    singleFilePath: normalizeFileName(
+      raw.singleFilePath ?? DEFAULT_TEMPLATE_PRESET.singleFilePath,
+    ),
+    categories: normalizeCategories(raw.categories ?? []),
+    categoryAggregateFileName: normalizeFileName(
+      raw.categoryAggregateFileName ??
+        DEFAULT_TEMPLATE_PRESET.categoryAggregateFileName,
+    ),
+    frontMatter: {
+      enabled: false,
+      fields: [],
+    },
+    entryTemplate: DEFAULT_TEMPLATE_PRESET.entryTemplate,
+  };
+  return [legacy];
+}
+
+function normalizeTemplate(
+  input: Partial<TemplateSetting>,
+): TemplateSetting | undefined {
+  const id = input.id?.trim() || crypto.randomUUID();
+  const name = input.name?.trim() || "Template";
+  const useDomainSubfolders = Boolean(
+    input.useDomainSubfolders ?? DEFAULT_TEMPLATE_PRESET.useDomainSubfolders,
+  );
+  const singleFilePath = normalizeFileName(
+    input.singleFilePath ?? DEFAULT_TEMPLATE_PRESET.singleFilePath,
+  );
+  const categoryAggregateFileName = normalizeFileName(
+    input.categoryAggregateFileName ??
+      DEFAULT_TEMPLATE_PRESET.categoryAggregateFileName,
+  );
+  const frontMatter = normalizeFrontMatter(input.frontMatter);
+  const entryTemplate =
+    typeof input.entryTemplate === "string" && input.entryTemplate.trim()
+      ? input.entryTemplate
+      : DEFAULT_TEMPLATE_PRESET.entryTemplate;
+  return {
+    id,
+    name,
+    useDomainSubfolders,
+    singleFilePath,
+    categories: normalizeCategories(input.categories ?? []),
+    categoryAggregateFileName,
+    frontMatter,
+    entryTemplate,
+  };
+}
+
+function normalizeFileName(input: string): string {
+  const trimmed = input?.trim();
+  if (!trimmed) {
+    return "inbox.md";
+  }
+  return trimmed;
+}
+
+function normalizeCategories(input: CategorySetting[]): CategorySetting[] {
+  return (input ?? [])
     .map((item) => normalizeCategory(item))
     .filter((item): item is CategorySetting => item !== undefined);
-  return {
-    ...settings,
-    singleFilePath,
-    categoryAggregateFileName: aggregateFileName,
-    categories,
-  };
 }
 
 function normalizeCategory(
@@ -57,5 +186,40 @@ function normalizeCategory(
     label,
     folder,
     aggregate,
+  };
+}
+
+function normalizeFrontMatter(
+  input: TemplateSetting["frontMatter"] | undefined,
+): TemplateSetting["frontMatter"] {
+  if (!input) {
+    return {
+      enabled: false,
+      fields: [],
+    };
+  }
+  const enabled = Boolean(input.enabled);
+  const fields = Array.isArray(input.fields)
+    ? input.fields
+        .map((field) => normalizeFrontMatterField(field))
+        .filter(
+          (field): field is TemplateFrontMatterField => field !== undefined,
+        )
+    : [];
+  return { enabled, fields };
+}
+
+function normalizeFrontMatterField(
+  field: Partial<TemplateFrontMatterField>,
+): TemplateFrontMatterField | undefined {
+  const key = field.key?.trim();
+  if (!key) {
+    return undefined;
+  }
+  return {
+    id: field.id?.trim() || crypto.randomUUID(),
+    key,
+    value: field.value ?? "",
+    updateOnClip: Boolean(field.updateOnClip),
   };
 }
