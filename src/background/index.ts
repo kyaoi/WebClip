@@ -238,25 +238,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 function setupContextMenus(): void {
   chrome.contextMenus.removeAll(() => {
+    const contexts: chrome.contextMenus.ContextType[] = ["selection", "image"];
     chrome.contextMenus.create({
       id: MENU_PER_PAGE,
       title: "Save to Markdown (per page)",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_SINGLE_FILE,
       title: "Save to inbox file",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_CATEGORY,
       title: "Save to category…",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_EXISTING,
       title: "Save to existing file…",
-      contexts: ["selection"],
+      contexts,
     });
   });
 }

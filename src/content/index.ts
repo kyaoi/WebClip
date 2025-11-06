@@ -1,5 +1,15 @@
 import type { SelectionContext } from "../shared/types";
 
+let lastContextMenuTarget: EventTarget | null = null;
+
+document.addEventListener(
+  "contextmenu",
+  (event) => {
+    lastContextMenuTarget = event.target;
+  },
+  true,
+);
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.type !== "webclip:get-selection") {
     return;
@@ -20,13 +30,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 function collectSelectionContext(): SelectionContext | undefined {
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return undefined;
-  }
-  const markdown = buildSelectionMarkdown(selection).trim();
-  const selectionText = selection.toString().trim();
-  if (!selectionText && !markdown) {
-    return undefined;
+  const selectionText = selection?.toString().trim() ?? "";
+  const markdownFromSelection =
+    selection && selection.rangeCount > 0
+      ? buildSelectionMarkdown(selection).trim()
+      : "";
+  let resolvedMarkdown = "";
+  let resolvedSelection = "";
+  if (selectionText || markdownFromSelection) {
+    resolvedMarkdown = markdownFromSelection || selectionText;
+    resolvedSelection = selectionText || resolvedMarkdown;
+  } else {
+    const fallbackMarkdown = serializeContextMenuTarget();
+    if (!fallbackMarkdown) {
+      return undefined;
+    }
+    resolvedMarkdown = fallbackMarkdown;
+    resolvedSelection = fallbackMarkdown;
   }
   const sourceUrl = new URL(window.location.href);
   const hash = sourceUrl.hash;
@@ -37,8 +57,6 @@ function collectSelectionContext(): SelectionContext | undefined {
     sourceUrl.hash = anchorPart;
   }
   const textFragmentUrl = sourceUrl.toString();
-  const resolvedMarkdown = markdown || selectionText;
-  const resolvedSelection = selectionText || resolvedMarkdown;
   const context: SelectionContext = {
     selection: resolvedSelection,
     markdown: resolvedMarkdown,
@@ -47,7 +65,20 @@ function collectSelectionContext(): SelectionContext | undefined {
     createdAt: new Date().toISOString(),
     textFragmentUrl,
   };
+  lastContextMenuTarget = null;
   return context;
+}
+
+function serializeContextMenuTarget(): string {
+  const target = lastContextMenuTarget;
+  if (!(target instanceof Element)) {
+    return "";
+  }
+  const image = target.closest("img");
+  if (!image || !image.isConnected) {
+    return "";
+  }
+  return serializeImage(image).trim();
 }
 
 function buildSelectionMarkdown(selection: Selection): string {
