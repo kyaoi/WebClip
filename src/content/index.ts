@@ -414,9 +414,7 @@ function serializeImage(element: HTMLImageElement): string {
     return "";
   }
   const alt =
-    element.getAttribute("alt") ??
-    element.getAttribute("aria-label") ??
-    "";
+    element.getAttribute("alt") ?? element.getAttribute("aria-label") ?? "";
   const escapedAlt = escapeMarkdownText(alt);
   const title = element.getAttribute("title") ?? "";
   const titlePart = title ? ` "${escapeAttributeValue(title)}"` : "";
