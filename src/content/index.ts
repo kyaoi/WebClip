@@ -759,7 +759,7 @@ function padAlignment(row: string[], size: number): string[] {
   while (output.length < size) {
     output.push("---");
   }
-  return output.map((value) => (value ? value : "---"));
+  return output;
 }
 
 function serializeTableCell(
