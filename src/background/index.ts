@@ -440,13 +440,12 @@ async function processClipWithTarget(
 function buildMarkdownEntry(context: SelectionContext): string {
   const timestamp = formatTimestamp(new Date(context.createdAt));
   const content = context.markdown.trim();
-  const lines = [`### ${timestamp}`, "---"];
+  const lines = [`### ${timestamp}`];
   if (content) {
     lines.push(content);
   }
   lines.push(
     "",
-    "---",
     `### source: [${context.title}](${context.textFragmentUrl})`,
     "---",
   );
