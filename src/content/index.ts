@@ -422,7 +422,7 @@ function serializeLink(
 }
 
 function serializeImage(element: HTMLImageElement): string {
-  const src = element.getAttribute("src");
+  const src = resolveImageSource(element);
   if (!src) {
     return "";
   }
@@ -435,6 +435,43 @@ function serializeImage(element: HTMLImageElement): string {
   const title = element.getAttribute("title") ?? "";
   const titlePart = title ? ` "${escapeAttributeValue(title)}"` : "";
   return `![${escapedAlt}](${src}${titlePart})`;
+}
+
+function resolveImageSource(element: HTMLImageElement): string {
+  const base = document.baseURI;
+  const candidates: (string | null | undefined)[] = [
+    element.currentSrc,
+    element.getAttribute("src"),
+    element.getAttribute("data-src"),
+    element.getAttribute("data-lazy-src"),
+    element.getAttribute("data-original"),
+    element.getAttribute("data-zoom-src"),
+  ];
+  const srcsetCandidates = [
+    element.getAttribute("srcset"),
+    element.getAttribute("data-srcset"),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) =>
+      value
+        .split(/\s*,\s*/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.split(/\s+/)[0] ?? ""),
+    )
+    .filter(Boolean);
+  const resolvedCandidates = [...candidates, ...srcsetCandidates];
+  for (const candidate of resolvedCandidates) {
+    if (!candidate) {
+      continue;
+    }
+    try {
+      return new URL(candidate, base).toString();
+    } catch {
+      // ignore invalid URLs
+    }
+  }
+  return "";
 }
 
 function serializeCodeBlock(element: HTMLElement): string {
