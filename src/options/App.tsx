@@ -1486,7 +1486,7 @@ function App(): JSX.Element {
         <section className="rounded-2xl border border-zinc-200 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <h2 className="text-lg font-medium">テーマ</h2>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            オプションページとファイルピッカーに用されます。
+            オプションページとファイルピッカーに適用されます。
           </p>
           <div className="mt-4 flex gap-3">
             {(["system", "light", "dark"] as ThemePreference[]).map((value) => (
