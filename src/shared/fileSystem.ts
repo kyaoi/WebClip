@@ -176,7 +176,7 @@ export async function appendEntry(
     // ignore read errors and continue with empty content
   }
   const template = options.template;
-  const variables = createTemplateVariables(options.context);
+  const variables = createTemplateVariables(options.context, { target });
   if (template.frontMatter.enabled && template.frontMatter.fields.length > 0) {
     existing = ensureFrontMatter(
       existing,

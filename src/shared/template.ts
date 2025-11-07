@@ -1,17 +1,30 @@
 import { formatTimestamp } from "./format";
-import type { SelectionContext, TemplateFrontMatterField } from "./types";
+import type {
+  ClipTarget,
+  SelectionContext,
+  TemplateFrontMatterField,
+} from "./types";
 
 export interface TemplateVariables {
   [key: string]: string;
 }
 
+interface TemplateVariableOptions {
+  target?: ClipTarget;
+}
+
 export function createTemplateVariables(
   context: SelectionContext,
+  options: TemplateVariableOptions = {},
 ): TemplateVariables {
   const created = new Date(context.createdAt);
   const formatted = formatTimestamp(created);
   const iso = created.toISOString();
   const markdown = context.markdown.trim();
+  const target = options.target;
+  const folder = target?.path?.length
+    ? target.path[target.path.length - 1]
+    : "";
   return {
     time: formatted,
     createdAt: formatted,
@@ -23,6 +36,7 @@ export function createTemplateVariables(
     url: context.textFragmentUrl || context.baseUrl,
     baseUrl: context.baseUrl,
     content: markdown,
+    folder,
   };
 }
 

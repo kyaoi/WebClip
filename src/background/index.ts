@@ -452,7 +452,7 @@ async function processClipWithTarget(
   const settings = options.settings ?? (await getSettings());
   const template = options.template ?? getActiveTemplate(settings);
   const hash = await sha1Hex(`${context.markdown}|${context.baseUrl}`);
-  const entry = buildMarkdownEntry(context, template);
+  const entry = buildMarkdownEntry(context, template, target);
   const result = await appendEntry(target, entry, hash, {
     context,
     template,
@@ -466,8 +466,9 @@ async function processClipWithTarget(
 function buildMarkdownEntry(
   context: SelectionContext,
   template: TemplateSetting,
+  target: ClipTarget,
 ): string {
-  const variables = createTemplateVariables(context);
+  const variables = createTemplateVariables(context, { target });
   const base = template.entryTemplate?.trim().length
     ? template.entryTemplate
     : createDefaultEntryTemplate(context);
