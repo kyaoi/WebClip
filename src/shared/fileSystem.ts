@@ -245,13 +245,29 @@ function splitFrontMatter(content: string): FrontMatterParts {
   if (!normalized.startsWith("---\n")) {
     return { hasFrontMatter: false, lines: [], body: normalized };
   }
-  const closingIndex = normalized.indexOf("\n---", 4);
+  // Find the closing delimiter: must be "\n---\n" or "\n---" at EOF
+  let closingIndex = -1;
+  let searchIndex = 4;
+  while (searchIndex < normalized.length) {
+    const idx = normalized.indexOf("\n---", searchIndex);
+    if (idx === -1) break;
+    // Check if followed by newline or is at EOF
+    if (
+      (idx + 4 < normalized.length && normalized[idx + 4] === "\n") ||
+      (idx + 4 === normalized.length)
+    ) {
+      closingIndex = idx;
+      break;
+    }
+    searchIndex = idx + 1;
+  }
   if (closingIndex === -1) {
     return { hasFrontMatter: false, lines: [], body: normalized };
   }
   const frontMatterContent = normalized.slice(4, closingIndex);
-  const remainder = normalized.slice(closingIndex + 4);
-  const body = remainder.startsWith("\n") ? remainder.slice(1) : remainder;
+  let remainder = normalized.slice(closingIndex + 4);
+  if (remainder.startsWith("\n")) remainder = remainder.slice(1);
+  const body = remainder;
   const lines =
     frontMatterContent.length > 0 ? frontMatterContent.split("\n") : [];
   return { hasFrontMatter: true, lines, body };
