@@ -1,7 +1,11 @@
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { loadRootDirectoryHandle } from "../shared/handles";
-import { getSettings, updateSettings } from "../shared/settings";
+import {
+  getActiveTemplate,
+  getSettings,
+  updateSettings,
+} from "../shared/settings";
 import { applyTheme } from "../shared/theme";
 import type { Settings, ThemePreference } from "../shared/types";
 
@@ -53,6 +57,8 @@ function App(): JSX.Element {
     );
   }
 
+  const template = getActiveTemplate(settings);
+
   return (
     <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <div className="flex flex-col gap-5">
@@ -85,19 +91,23 @@ function App(): JSX.Element {
           </h2>
           <ul className="mt-2 space-y-1 text-sm text-zinc-600 dark:text-zinc-300">
             <li>
-              単一ファイル: <code>{settings.singleFilePath}</code>
+              使用テンプレート:{" "}
+              <span className="font-medium">{template.name}</span>
             </li>
             <li>
-              ドメイン分類: {settings.useDomainSubfolders ? "有効" : "無効"}
+              単一ファイル: <code>{template.singleFilePath}</code>
+            </li>
+            <li>
+              ドメイン分類: {template.useDomainSubfolders ? "有効" : "無効"}
             </li>
           </ul>
           <div className="mt-3 rounded-xl border border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-400">
             <p className="font-semibold text-zinc-600 dark:text-zinc-300">
               カテゴリ一覧
             </p>
-            {settings.categories.length ? (
+            {template.categories.length ? (
               <ul className="mt-1 space-y-1">
-                {settings.categories.map((category) => (
+                {template.categories.map((category) => (
                   <li
                     key={category.id}
                     className="flex items-center justify-between gap-2"
@@ -105,7 +115,7 @@ function App(): JSX.Element {
                     <span>{category.label}</span>
                     <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
                       {category.aggregate
-                        ? `${category.folder}/${settings.categoryAggregateFileName}`
+                        ? `${category.folder}/${template.categoryAggregateFileName}`
                         : `${category.folder}/<タイトル>.md`}
                     </span>
                   </li>
