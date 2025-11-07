@@ -1415,6 +1415,10 @@ function App(): JSX.Element {
                               <code>{`{{baseUrl}}`}</code> — ページURL
                             </li>
                             <li>
+                              <code>{`{{folder}}`}</code> —
+                              保存先のフォルダー名（例: DDD）
+                            </li>
+                            <li>
                               <code>{`{{content}}`}</code> —
                               選択したMarkdown本文
                             </li>
