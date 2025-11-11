@@ -2,6 +2,7 @@ import { storageGet, storageSet } from "./chromeStorage";
 import { slugify } from "./format";
 import {
   type CategorySetting,
+  type CategorySubfolder,
   DEFAULT_ENTRY_TEMPLATE,
   DEFAULT_SETTINGS,
   DEFAULT_TEMPLATE_ID,
@@ -181,11 +182,31 @@ function normalizeCategory(
   }
   const folder = input.folder?.trim() || slugify(label);
   const aggregate = Boolean(input.aggregate);
+  const subfolders = Array.isArray(input.subfolders)
+    ? input.subfolders
+        .map((sub) => normalizeSubfolder(sub))
+        .filter((sub): sub is CategorySubfolder => sub !== undefined)
+    : [];
   return {
     id: input.id || crypto.randomUUID(),
     label,
     folder,
     aggregate,
+    subfolders,
+  };
+}
+
+function normalizeSubfolder(
+  input: Partial<CategorySubfolder>,
+): CategorySubfolder | undefined {
+  const name = input.name?.trim();
+  if (!name) {
+    return undefined;
+  }
+  return {
+    id: input.id?.trim() || crypto.randomUUID(),
+    name,
+    aggregate: Boolean(input.aggregate),
   };
 }
 

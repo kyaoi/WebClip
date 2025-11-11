@@ -181,9 +181,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.type === "webclip:category:save") {
-    const { requestId, categoryId, mode } = message as {
+    const { requestId, categoryId, subfolderId, mode } = message as {
       requestId: string;
       categoryId: string;
+      subfolderId?: string;
       mode?: "aggregate" | "page";
     };
     void (async () => {
@@ -208,12 +209,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
         return;
       }
+      
+      let pathString: string;
       const fileBase = slugify(context.title);
-      const useAggregate = mode ? mode === "aggregate" : category.aggregate;
-      const folderPrefix = category.folder ? `${category.folder}/` : "";
-      const pathString = useAggregate
-        ? `${folderPrefix}${template.categoryAggregateFileName}`
-        : `${folderPrefix}${fileBase}.md`;
+      
+      if (subfolderId) {
+        const subfolder = category.subfolders.find(
+          (sub) => sub.id === subfolderId,
+        );
+        if (!subfolder) {
+          sendResponse({
+            ok: false,
+            error: "サブフォルダが見つかりませんでした。",
+          });
+          return;
+        }
+        const useAggregate = mode ? mode === "aggregate" : subfolder.aggregate;
+        const folderPrefix = category.folder
+          ? `${category.folder}/${subfolder.name}/`
+          : `${subfolder.name}/`;
+        pathString = useAggregate
+          ? `${folderPrefix}${template.categoryAggregateFileName}`
+          : `${folderPrefix}${fileBase}.md`;
+      } else {
+        const useAggregate = mode ? mode === "aggregate" : category.aggregate;
+        const folderPrefix = category.folder ? `${category.folder}/` : "";
+        pathString = useAggregate
+          ? `${folderPrefix}${template.categoryAggregateFileName}`
+          : `${folderPrefix}${fileBase}.md`;
+      }
+      
       const target = clipTargetFromPath(pathString, true);
       const displayPath = [...target.path, target.fileName].join("/");
       const result = await processClipWithTarget(context, target, {

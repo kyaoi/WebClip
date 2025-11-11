@@ -39,11 +39,18 @@ export interface ClipResult {
 
 export type ThemePreference = "system" | "light" | "dark";
 
+export interface CategorySubfolder {
+  id: string;
+  name: string;
+  aggregate: boolean;
+}
+
 export interface CategorySetting {
   id: string;
   label: string;
   folder: string;
   aggregate: boolean;
+  subfolders: CategorySubfolder[];
 }
 
 export interface TemplateFrontMatterField {

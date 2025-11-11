@@ -18,6 +18,7 @@ import { getSettings, updateSettings } from "../shared/settings";
 import { applyTheme } from "../shared/theme";
 import type {
   CategorySetting,
+  CategorySubfolder,
   Settings,
   TemplateFrontMatterField,
   TemplateSetting,
@@ -472,6 +473,7 @@ function App(): JSX.Element {
       label,
       folder: slugify(label),
       aggregate: false,
+      subfolders: [],
     };
     await applyTemplateUpdate(selectedTemplate.id, (template) => ({
       ...template,
@@ -550,6 +552,93 @@ function App(): JSX.Element {
       target
         ? `カテゴリ「${target.label}」を削除しました。`
         : "カテゴリを削除しました。",
+    );
+  }
+
+  async function addSubfolder(
+    categoryId: string,
+    subfolderName: string,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    const trimmed = subfolderName.trim();
+    if (!trimmed) {
+      setStatus("サブフォルダ名を入力してください。");
+      return;
+    }
+    const newSubfolder: CategorySubfolder = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      aggregate: false,
+    };
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      categories: template.categories.map((cat) =>
+        cat.id === categoryId
+          ? { ...cat, subfolders: [...cat.subfolders, newSubfolder] }
+          : cat,
+      ),
+    }));
+    const category = selectedTemplate.categories.find(
+      (cat) => cat.id === categoryId,
+    );
+    setStatus(
+      category
+        ? `カテゴリ「${category.label}」にサブフォルダ「${trimmed}」を追加しました。`
+        : "サブフォルダを追加しました。",
+    );
+  }
+
+  async function toggleSubfolderAggregate(
+    categoryId: string,
+    subfolderId: string,
+    next: boolean,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      categories: template.categories.map((cat) =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              subfolders: cat.subfolders.map((sub) =>
+                sub.id === subfolderId ? { ...sub, aggregate: next } : sub,
+              ),
+            }
+          : cat,
+      ),
+    }));
+  }
+
+  async function removeSubfolder(
+    categoryId: string,
+    subfolderId: string,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    const category = selectedTemplate.categories.find(
+      (cat) => cat.id === categoryId,
+    );
+    const subfolder = category?.subfolders.find((sub) => sub.id === subfolderId);
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      categories: template.categories.map((cat) =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              subfolders: cat.subfolders.filter((sub) => sub.id !== subfolderId),
+            }
+          : cat,
+      ),
+    }));
+    setStatus(
+      subfolder
+        ? `サブフォルダ「${subfolder.name}」を削除しました。`
+        : "サブフォルダを削除しました。",
     );
   }
 
@@ -1061,25 +1150,44 @@ function App(): JSX.Element {
                           </div>
                         </form>
 
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <button
-                            type="button"
-                            onClick={() => void refreshFolderOptions()}
-                            className="inline-flex items-center justify-center rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                            disabled={foldersLoading}
-                          >
-                            {foldersLoading
-                              ? "フォルダを読み込み中…"
-                              : "フォルダ一覧を更新"}
-                          </button>
-                          {settings.rootFolderName ? (
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                              保存先フォルダ配下のサブフォルダ候補を利用できます。
-                            </p>
-                          ) : (
-                            <p className="text-xs text-amber-600 dark:text-amber-300">
-                              先に保存先フォルダを設定してください。
-                            </p>
+                        <div className="mt-4 flex flex-col gap-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <button
+                              type="button"
+                              onClick={() => void refreshFolderOptions()}
+                              className="inline-flex items-center justify-center rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                              disabled={foldersLoading}
+                            >
+                              {foldersLoading
+                                ? "フォルダを読み込み中…"
+                                : "フォルダ一覧を更新"}
+                            </button>
+                            {settings.rootFolderName ? (
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                保存先フォルダ配下のサブフォルダ候補を利用できます。
+                              </p>
+                            ) : (
+                              <p className="text-xs text-amber-600 dark:text-amber-300">
+                                先に保存先フォルダを設定してください。
+                              </p>
+                            )}
+                          </div>
+                          {folderOptions.length > 0 && (
+                            <div className="rounded-lg border border-zinc-200 bg-zinc-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-800/60">
+                              <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+                                検出されたサブフォルダ ({folderOptions.length}個):
+                              </p>
+                              <div className="mt-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+                                {folderOptions.map((folder) => (
+                                  <span
+                                    key={folder}
+                                    className="inline-flex items-center rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"
+                                  >
+                                    📁 {folder}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
 
@@ -1144,7 +1252,7 @@ function App(): JSX.Element {
                                       />
                                     </label>
                                     <label className="flex flex-col gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                                      サブフォルダ名
+                                      ディレクトリ名（カテゴリのベースフォルダ）
                                       <input
                                         value={draft.folder}
                                         onChange={(
@@ -1206,6 +1314,86 @@ function App(): JSX.Element {
                                         </select>
                                       ) : null}
                                     </label>
+
+                                    <div className="rounded-lg border border-indigo-100 bg-indigo-50/30 p-3 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                                          📁 サブフォルダ
+                                        </h4>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const name = prompt(
+                                              "サブフォルダ名を入力してください:",
+                                            );
+                                            if (name) {
+                                              void addSubfolder(category.id, name);
+                                            }
+                                          }}
+                                          className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-xs font-medium text-indigo-600 transition hover:border-indigo-400 dark:border-indigo-400/50 dark:bg-indigo-900/50 dark:text-indigo-200"
+                                        >
+                                          + 追加
+                                        </button>
+                                      </div>
+                                      {category.subfolders.length > 0 ? (
+                                        <ul className="mt-3 space-y-2">
+                                          {category.subfolders.map((subfolder) => (
+                                            <li
+                                              key={subfolder.id}
+                                              className="rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-zinc-700 dark:bg-zinc-900/80"
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <div className="flex-1">
+                                                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                                                    {subfolder.name}
+                                                  </p>
+                                                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                                    {draft.folder || slugify(draft.label)}/{subfolder.name}/
+                                                    {subfolder.aggregate
+                                                      ? selectedTemplate.categoryAggregateFileName
+                                                      : "<ページタイトル>.md"}
+                                                  </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <label className="inline-flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-300">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={subfolder.aggregate}
+                                                      onChange={(event) =>
+                                                        void toggleSubfolderAggregate(
+                                                          category.id,
+                                                          subfolder.id,
+                                                          event.target.checked,
+                                                        )
+                                                      }
+                                                      className="size-3 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-600"
+                                                    />
+                                                    集約
+                                                  </label>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      void removeSubfolder(
+                                                        category.id,
+                                                        subfolder.id,
+                                                      )
+                                                    }
+                                                    className="rounded-full border border-rose-200 px-2 py-0.5 text-xs text-rose-500 transition hover:border-rose-400 dark:border-rose-500/60 dark:text-rose-300"
+                                                  >
+                                                    削除
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                          サブフォルダはまだありません。「+ 追加」ボタンから追加してください。
+                                        </p>
+                                      )}
+                                    </div>
+
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                       <label className="inline-flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
                                         <input
@@ -1219,7 +1407,7 @@ function App(): JSX.Element {
                                           }
                                           className="size-4 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-600"
                                         />
-                                        集約ファイル（
+                                        カテゴリ直下は集約ファイル（
                                         {
                                           selectedTemplate.categoryAggregateFileName
                                         }
@@ -1232,15 +1420,17 @@ function App(): JSX.Element {
                                         }
                                         className="inline-flex items-center justify-center rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-500 transition hover:border-rose-400 hover:text-rose-500 dark:border-rose-500/60 dark:text-rose-300"
                                       >
-                                        削除
+                                        カテゴリを削除
                                       </button>
                                     </div>
-                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                      保存パス例:{" "}
-                                      {draft.folder || slugify(draft.label)}/
-                                      {category.aggregate
-                                        ? selectedTemplate.categoryAggregateFileName
-                                        : "<ページタイトル>.md"}
+                                    <p className="rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-400">
+                                      💾 <span className="font-semibold">カテゴリ直下の保存パス例:</span>{" "}
+                                      <code className="rounded bg-white px-1.5 py-0.5 font-mono dark:bg-zinc-900">
+                                        {draft.folder || slugify(draft.label)}/
+                                        {category.aggregate
+                                          ? selectedTemplate.categoryAggregateFileName
+                                          : "<ページタイトル>.md"}
+                                      </code>
                                     </p>
                                   </div>
                                 </li>
