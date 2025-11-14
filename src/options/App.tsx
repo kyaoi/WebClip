@@ -7,7 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { listFolders } from "../shared/fileSystem";
+import {
+  buildDirectoryTree,
+  type DirectoryTreeResult,
+  listFolders,
+} from "../shared/fileSystem";
 import { slugify } from "../shared/format";
 import {
   clearRootDirectoryHandle,
@@ -25,6 +29,7 @@ import type {
   ThemePreference,
 } from "../shared/types";
 import { DEFAULT_ENTRY_TEMPLATE } from "../shared/types";
+import SidebarTreePanel from "./components/SidebarTreePanel";
 
 function createDefaultTemplate(name: string): TemplateSetting {
   return {
@@ -42,7 +47,7 @@ function createDefaultTemplate(name: string): TemplateSetting {
   };
 }
 
-function App(): JSX.Element {
+export default function App(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,13 +61,21 @@ function App(): JSX.Element {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
-  const [templateView, setTemplateView] = useState<"files" | "format">("files");
   const [templateNameInput, setTemplateNameInput] = useState("");
   const [frontMatterEnabled, setFrontMatterEnabled] = useState(false);
   const [frontMatterDrafts, setFrontMatterDrafts] = useState<
     TemplateFrontMatterField[]
   >([]);
   const [entryTemplateInput, setEntryTemplateInput] = useState("");
+  const [directoryTree, setDirectoryTree] =
+    useState<DirectoryTreeResult | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeError, setTreeError] = useState<string | null>(null);
+  const [treeSearch, setTreeSearch] = useState("");
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [selectedTreePath, setSelectedTreePath] = useState<string | null>(null);
   const aggregateInputId = useId();
   const folderDatalistId = useId();
   const templateNameInputId = useId();
@@ -70,6 +83,7 @@ function App(): JSX.Element {
   const [foldersLoading, setFoldersLoading] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const previousTemplateIdRef = useRef<string | null>(null);
+  const treeTemplateIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -129,6 +143,8 @@ function App(): JSX.Element {
       setFrontMatterDrafts([]);
       setEntryTemplateInput("");
       previousTemplateIdRef.current = null;
+      treeTemplateIdRef.current = null;
+      setSelectedTreePath(null);
       return;
     }
     setSingleFileInput(selectedTemplate.singleFilePath);
@@ -163,6 +179,16 @@ function App(): JSX.Element {
     setEntryTemplateInput(selectedTemplate.entryTemplate);
   }, [selectedTemplate]);
 
+  useEffect(() => {
+    if (!selectedTemplate) {
+      return;
+    }
+    if (treeTemplateIdRef.current !== selectedTemplate.id) {
+      treeTemplateIdRef.current = selectedTemplate.id;
+      setSelectedTreePath(selectedTemplate.singleFilePath);
+    }
+  }, [selectedTemplate]);
+
   const templateCount = templates.length;
   const isSelectedTemplateActive = Boolean(
     selectedTemplate && settings?.activeTemplateId === selectedTemplate.id,
@@ -177,6 +203,26 @@ function App(): JSX.Element {
     }
     return "未設定";
   }, [folderName, settings]);
+
+  const handleTreeNodeToggle = useCallback((nodeId: string): void => {
+    setExpandedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleTreePathSelect = useCallback((path: string): void => {
+    setSelectedTreePath(path);
+  }, []);
+
+  const handleTreeSearchChange = useCallback((value: string): void => {
+    setTreeSearch(value);
+  }, []);
 
   const refreshFolderOptions = useCallback(
     async (options: { silent?: boolean } = {}): Promise<void> => {
@@ -215,6 +261,54 @@ function App(): JSX.Element {
       setFolderOptions([]);
     }
   }, [refreshFolderOptions, settings?.rootFolderName]);
+
+  const refreshDirectoryTree = useCallback(
+    async (options: { interactive?: boolean } = {}): Promise<void> => {
+      if (!settings?.rootFolderName) {
+        setDirectoryTree(null);
+        setTreeError(null);
+        return;
+      }
+      const { interactive = false } = options;
+      try {
+        setTreeLoading(true);
+        setTreeError(null);
+        const result = await buildDirectoryTree({ requestAccess: interactive });
+        setDirectoryTree(result);
+        setExpandedNodeIds((prev) => {
+          if (prev.size) {
+            return prev;
+          }
+          const next = new Set<string>();
+          result.nodes
+            .filter((node) => node.kind === "directory")
+            .forEach((node) => {
+              next.add(node.id);
+            });
+          return next;
+        });
+      } catch (error) {
+        console.error(error);
+        setTreeError("ディレクトリツリーの取得に失敗しました。");
+      } finally {
+        setTreeLoading(false);
+      }
+    },
+    [settings?.rootFolderName],
+  );
+
+  useEffect(() => {
+    if (settings?.rootFolderName) {
+      void refreshDirectoryTree();
+    } else {
+      setDirectoryTree(null);
+      setTreeError(null);
+    }
+  }, [refreshDirectoryTree, settings?.rootFolderName]);
+
+  const handleTreeReload = useCallback(() => {
+    void refreshDirectoryTree({ interactive: true });
+  }, [refreshDirectoryTree]);
 
   const applyTemplateUpdate = useCallback(
     async (
@@ -334,7 +428,6 @@ function App(): JSX.Element {
     });
     setSettings(updated);
     setSelectedTemplateId(nextTemplate.id);
-    setTemplateView("files");
     setStatus(`テンプレート「${baseName}」を追加しました。`);
   }
 
@@ -623,14 +716,18 @@ function App(): JSX.Element {
     const category = selectedTemplate.categories.find(
       (cat) => cat.id === categoryId,
     );
-    const subfolder = category?.subfolders.find((sub) => sub.id === subfolderId);
+    const subfolder = category?.subfolders.find(
+      (sub) => sub.id === subfolderId,
+    );
     await applyTemplateUpdate(selectedTemplate.id, (template) => ({
       ...template,
       categories: template.categories.map((cat) =>
         cat.id === categoryId
           ? {
               ...cat,
-              subfolders: cat.subfolders.filter((sub) => sub.id !== subfolderId),
+              subfolders: cat.subfolders.filter(
+                (sub) => sub.id !== subfolderId,
+              ),
             }
           : cat,
       ),
@@ -852,7 +949,7 @@ function App(): JSX.Element {
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-8 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header className="flex flex-col gap-1 text-balance">
           <h1 className="text-3xl font-semibold tracking-tight">
             WebClip 設定
@@ -909,133 +1006,134 @@ function App(): JSX.Element {
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             テンプレートごとに保存先のルールやフロントマター、本文フォーマットを設定できます。
           </p>
-          <div className="mt-4 flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {templates.map((template) => {
-                  const isSelected = selectedTemplate?.id === template.id;
-                  const isActive = settings.activeTemplateId === template.id;
-                  return (
+          <div className="mt-4 grid gap-6 lg:grid-cols-[300px_1fr]">
+            <SidebarTreePanel
+              folderLabel={folderLabel}
+              hasRootFolder={Boolean(settings.rootFolderName)}
+              rootName={
+                directoryTree?.rootName ?? settings.rootFolderName ?? null
+              }
+              nodes={directoryTree?.nodes ?? []}
+              searchQuery={treeSearch}
+              onSearchChange={handleTreeSearchChange}
+              expandedNodeIds={expandedNodeIds}
+              onToggleNode={handleTreeNodeToggle}
+              selectedPath={selectedTreePath}
+              onSelectPath={handleTreePathSelect}
+              onChooseFolder={chooseFolder}
+              onReloadTree={handleTreeReload}
+              onReRequestPermission={reRequestPermission}
+              isLoading={treeLoading}
+              requiresPermission={Boolean(directoryTree?.requiresPermission)}
+              treeError={treeError}
+              truncated={Boolean(directoryTree?.truncated)}
+              totalCount={directoryTree?.totalCount ?? 0}
+            />
+            <div className="flex flex-col gap-4">
+              <div className="rounded-2xl border border-zinc-200 bg-white/60 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {templates.map((template) => {
+                      const isSelected = selectedTemplate?.id === template.id;
+                      const isActive =
+                        settings.activeTemplateId === template.id;
+                      return (
+                        <button
+                          key={template.id}
+                          type="button"
+                          onClick={() => setSelectedTemplateId(template.id)}
+                          className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                            isSelected
+                              ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200"
+                              : "border-zinc-200 text-zinc-600 hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                          }`}
+                        >
+                          <span>{template.name}</span>
+                          {isActive ? (
+                            <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-200">
+                              既定
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
                     <button
-                      key={template.id}
                       type="button"
-                      onClick={() => setSelectedTemplateId(template.id)}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isSelected
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200"
-                          : "border-zinc-200 text-zinc-600 hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                      }`}
+                      onClick={() => void addTemplate()}
+                      className="rounded-full border border-dashed border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-500 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
                     >
-                      <span>{template.name}</span>
-                      {isActive ? (
-                        <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-200">
-                          既定
-                        </span>
-                      ) : null}
+                      + テンプレート追加
                     </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => void addTemplate()}
-                  className="rounded-full border border-dashed border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-500 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                >
-                  + テンプレート追加
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void exportSettingsToFile()}
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                >
-                  設定をエクスポート
-                </button>
-                <button
-                  type="button"
-                  onClick={() => importInputRef.current?.click()}
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                >
-                  設定をインポート
-                </button>
-              </div>
-            </div>
-
-            {selectedTemplate ? (
-              <div className="rounded-xl border border-zinc-200 bg-white/80 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/70">
-                <div className="flex flex-col gap-5">
-                  <div className="flex flex-col gap-2">
-                    <label
-                      htmlFor={templateNameInputId}
-                      className="text-sm font-medium text-zinc-700 dark:text-zinc-200"
-                    >
-                      テンプレート名
-                    </label>
-                    <input
-                      id={templateNameInputId}
-                      value={templateNameInput}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setTemplateNameInput(event.target.value)
-                      }
-                      onBlur={() => void saveTemplateName()}
-                      className="rounded-lg border border-zinc-200 bg-white/80 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
-                    />
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        void setTemplateAsDefault(selectedTemplate.id)
-                      }
-                      disabled={Boolean(isSelectedTemplateActive)}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isSelectedTemplateActive
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200"
-                          : "border-zinc-200 text-zinc-600 hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                      }`}
+                      onClick={() => void exportSettingsToFile()}
+                      className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
                     >
-                      {isSelectedTemplateActive
-                        ? "既定のテンプレート"
-                        : "既定に設定"}
+                      設定をエクスポート
                     </button>
-                    {templateCount > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => importInputRef.current?.click()}
+                      className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                    >
+                      設定をインポート
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {selectedTemplate ? (
+                <div className="rounded-xl border border-zinc-200 bg-white/80 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/70">
+                  <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-2">
+                      <label
+                        htmlFor={templateNameInputId}
+                        className="text-sm font-medium text-zinc-700 dark:text-zinc-200"
+                      >
+                        テンプレート名
+                      </label>
+                      <input
+                        id={templateNameInputId}
+                        value={templateNameInput}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setTemplateNameInput(event.target.value)
+                        }
+                        onBlur={() => void saveTemplateName()}
+                        className="rounded-lg border border-zinc-200 bg-white/80 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() =>
-                          void removeTemplateSetting(selectedTemplate.id)
+                          void setTemplateAsDefault(selectedTemplate.id)
                         }
-                        className="rounded-full border border-rose-300 px-4 py-2 text-sm font-medium text-rose-500 transition hover:border-rose-500 hover:text-rose-500 dark:border-rose-500/60 dark:text-rose-300"
+                        disabled={Boolean(isSelectedTemplateActive)}
+                        className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                          isSelectedTemplateActive
+                            ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200"
+                            : "border-zinc-200 text-zinc-600 hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                        }`}
                       >
-                        テンプレートを削除
+                        {isSelectedTemplateActive
+                          ? "既定のテンプレート"
+                          : "既定に設定"}
                       </button>
-                    ) : null}
-                  </div>
-                  <div className="flex gap-2 rounded-full border border-zinc-200 bg-zinc-100/60 p-1 text-sm dark:border-zinc-700 dark:bg-zinc-800/60">
-                    <button
-                      type="button"
-                      onClick={() => setTemplateView("files")}
-                      className={`flex-1 rounded-full px-4 py-1.5 font-medium transition ${
-                        templateView === "files"
-                          ? "bg-white text-indigo-600 shadow dark:bg-zinc-900 dark:text-indigo-300"
-                          : "text-zinc-600 hover:text-indigo-500 dark:text-zinc-400 dark:hover:text-indigo-300"
-                      }`}
-                    >
-                      ファイル設定
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTemplateView("format")}
-                      className={`flex-1 rounded-full px-4 py-1.5 font-medium transition ${
-                        templateView === "format"
-                          ? "bg-white text-indigo-600 shadow dark:bg-zinc-900 dark:text-indigo-300"
-                          : "text-zinc-600 hover:text-indigo-500 dark:text-zinc-400 dark:hover:text-indigo-300"
-                      }`}
-                    >
-                      フォーマット設定
-                    </button>
-                  </div>
+                      {templateCount > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void removeTemplateSetting(selectedTemplate.id)
+                          }
+                          className="rounded-full border border-rose-300 px-4 py-2 text-sm font-medium text-rose-500 transition hover:border-rose-500 hover:text-rose-500 dark:border-rose-500/60 dark:text-rose-300"
+                        >
+                          テンプレートを削除
+                        </button>
+                      ) : null}
+                    </div>
 
-                  {templateView === "files" ? (
                     <div className="flex flex-col gap-6">
                       <div className="rounded-xl border border-zinc-200 bg-white/80 p-4 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
                         <label className="flex items-start gap-3">
@@ -1175,7 +1273,8 @@ function App(): JSX.Element {
                           {folderOptions.length > 0 && (
                             <div className="rounded-lg border border-zinc-200 bg-zinc-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-800/60">
                               <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-                                検出されたサブフォルダ ({folderOptions.length}個):
+                                検出されたサブフォルダ ({folderOptions.length}
+                                個):
                               </p>
                               <div className="mt-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
                                 {folderOptions.map((folder) => (
@@ -1327,7 +1426,10 @@ function App(): JSX.Element {
                                               "サブフォルダ名を入力してください:",
                                             );
                                             if (name) {
-                                              void addSubfolder(category.id, name);
+                                              void addSubfolder(
+                                                category.id,
+                                                name,
+                                              );
                                             }
                                           }}
                                           className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-xs font-medium text-indigo-600 transition hover:border-indigo-400 dark:border-indigo-400/50 dark:bg-indigo-900/50 dark:text-indigo-200"
@@ -1337,59 +1439,67 @@ function App(): JSX.Element {
                                       </div>
                                       {category.subfolders.length > 0 ? (
                                         <ul className="mt-3 space-y-2">
-                                          {category.subfolders.map((subfolder) => (
-                                            <li
-                                              key={subfolder.id}
-                                              className="rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-zinc-700 dark:bg-zinc-900/80"
-                                            >
-                                              <div className="flex items-center justify-between gap-2">
-                                                <div className="flex-1">
-                                                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                                                    {subfolder.name}
-                                                  </p>
-                                                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                                                    {draft.folder || slugify(draft.label)}/{subfolder.name}/
-                                                    {subfolder.aggregate
-                                                      ? selectedTemplate.categoryAggregateFileName
-                                                      : "<ページタイトル>.md"}
-                                                  </p>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                  <label className="inline-flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-300">
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={subfolder.aggregate}
-                                                      onChange={(event) =>
-                                                        void toggleSubfolderAggregate(
+                                          {category.subfolders.map(
+                                            (subfolder) => (
+                                              <li
+                                                key={subfolder.id}
+                                                className="rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-zinc-700 dark:bg-zinc-900/80"
+                                              >
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <div className="flex-1">
+                                                    <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                                                      {subfolder.name}
+                                                    </p>
+                                                    <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                                      {draft.folder ||
+                                                        slugify(draft.label)}
+                                                      /{subfolder.name}/
+                                                      {subfolder.aggregate
+                                                        ? selectedTemplate.categoryAggregateFileName
+                                                        : "<ページタイトル>.md"}
+                                                    </p>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                    <label className="inline-flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-300">
+                                                      <input
+                                                        type="checkbox"
+                                                        checked={
+                                                          subfolder.aggregate
+                                                        }
+                                                        onChange={(event) =>
+                                                          void toggleSubfolderAggregate(
+                                                            category.id,
+                                                            subfolder.id,
+                                                            event.target
+                                                              .checked,
+                                                          )
+                                                        }
+                                                        className="size-3 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-600"
+                                                      />
+                                                      集約
+                                                    </label>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        void removeSubfolder(
                                                           category.id,
                                                           subfolder.id,
-                                                          event.target.checked,
                                                         )
                                                       }
-                                                      className="size-3 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-600"
-                                                    />
-                                                    集約
-                                                  </label>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      void removeSubfolder(
-                                                        category.id,
-                                                        subfolder.id,
-                                                      )
-                                                    }
-                                                    className="rounded-full border border-rose-200 px-2 py-0.5 text-xs text-rose-500 transition hover:border-rose-400 dark:border-rose-500/60 dark:text-rose-300"
-                                                  >
-                                                    削除
-                                                  </button>
+                                                      className="rounded-full border border-rose-200 px-2 py-0.5 text-xs text-rose-500 transition hover:border-rose-400 dark:border-rose-500/60 dark:text-rose-300"
+                                                    >
+                                                      削除
+                                                    </button>
+                                                  </div>
                                                 </div>
-                                              </div>
-                                            </li>
-                                          ))}
+                                              </li>
+                                            ),
+                                          )}
                                         </ul>
                                       ) : (
                                         <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                                          サブフォルダはまだありません。「+ 追加」ボタンから追加してください。
+                                          サブフォルダはまだありません。「+
+                                          追加」ボタンから追加してください。
                                         </p>
                                       )}
                                     </div>
@@ -1424,7 +1534,10 @@ function App(): JSX.Element {
                                       </button>
                                     </div>
                                     <p className="rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-400">
-                                      💾 <span className="font-semibold">カテゴリ直下の保存パス例:</span>{" "}
+                                      💾{" "}
+                                      <span className="font-semibold">
+                                        カテゴリ直下の保存パス例:
+                                      </span>{" "}
                                       <code className="rounded bg-white px-1.5 py-0.5 font-mono dark:bg-zinc-900">
                                         {draft.folder || slugify(draft.label)}/
                                         {category.aggregate
@@ -1443,233 +1556,240 @@ function App(): JSX.Element {
                           </p>
                         )}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-6">
-                      <div className="rounded-xl border border-zinc-200 bg-white/80 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
-                              フロントマター
-                            </h3>
-                            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                              新規作成時にYAMLフロントマターを挿入し、必要に応じてクリップ時に値を更新します。
-                            </p>
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-xl border border-zinc-200 bg-white/80 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
+                                フロントマター
+                              </h3>
+                              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                新規作成時にYAMLフロントマターを挿入し、必要に応じてクリップ時に値を更新します。
+                              </p>
+                            </div>
+                            <label className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                              <input
+                                type="checkbox"
+                                className="size-4 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-700"
+                                checked={frontMatterEnabled}
+                                onChange={(event) =>
+                                  void toggleFrontMatterEnabled(
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                              有効にする
+                            </label>
                           </div>
-                          <label className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-                            <input
-                              type="checkbox"
-                              className="size-4 rounded border border-zinc-300 accent-indigo-600 dark:border-zinc-700"
-                              checked={frontMatterEnabled}
-                              onChange={(event) =>
-                                void toggleFrontMatterEnabled(
-                                  event.target.checked,
-                                )
-                              }
-                            />
-                            有効にする
-                          </label>
-                        </div>
-                        <div className="mt-4 flex flex-col gap-3">
-                          <button
-                            type="button"
-                            onClick={addFrontMatterField}
-                            className="self-start rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                          >
-                            + 項目を追加
-                          </button>
-                          {frontMatterDrafts.length ? (
-                            <div className="flex flex-col gap-3">
-                              {frontMatterDrafts.map((field) => {
-                                const draft = field;
-                                return (
-                                  <div
-                                    key={field.id}
-                                    className="rounded-lg border border-zinc-200 bg-white/70 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-900/80"
-                                  >
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                                      <div className="flex-1">
-                                        <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                                          キー
+                          <div className="mt-4 flex flex-col gap-3">
+                            <button
+                              type="button"
+                              onClick={addFrontMatterField}
+                              className="self-start rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                            >
+                              + 項目を追加
+                            </button>
+                            {frontMatterDrafts.length ? (
+                              <div className="flex flex-col gap-3">
+                                {frontMatterDrafts.map((field) => {
+                                  const draft = field;
+                                  return (
+                                    <div
+                                      key={field.id}
+                                      className="rounded-lg border border-zinc-200 bg-white/70 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-900/80"
+                                    >
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                                        <div className="flex-1">
+                                          <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                            キー
+                                            <input
+                                              value={draft.key}
+                                              onChange={(
+                                                event: ChangeEvent<HTMLInputElement>,
+                                              ) =>
+                                                setFrontMatterDrafts((prev) =>
+                                                  prev.map((item) =>
+                                                    item.id === field.id
+                                                      ? {
+                                                          ...item,
+                                                          key: event.target
+                                                            .value,
+                                                        }
+                                                      : item,
+                                                  ),
+                                                )
+                                              }
+                                              onBlur={() =>
+                                                void handleFrontMatterFieldBlur(
+                                                  field.id,
+                                                  {
+                                                    ...draft,
+                                                    key: draft.key,
+                                                  },
+                                                )
+                                              }
+                                              disabled={!frontMatterEnabled}
+                                              className="mt-1 w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                                            />
+                                          </label>
+                                        </div>
+                                        <div className="flex-1">
+                                          <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                            値 / テンプレート
+                                            <input
+                                              value={draft.value}
+                                              onChange={(
+                                                event: ChangeEvent<HTMLInputElement>,
+                                              ) =>
+                                                setFrontMatterDrafts((prev) =>
+                                                  prev.map((item) =>
+                                                    item.id === field.id
+                                                      ? {
+                                                          ...item,
+                                                          value:
+                                                            event.target.value,
+                                                        }
+                                                      : item,
+                                                  ),
+                                                )
+                                              }
+                                              onBlur={() =>
+                                                void handleFrontMatterFieldBlur(
+                                                  field.id,
+                                                  {
+                                                    ...draft,
+                                                    value: draft.value,
+                                                  },
+                                                )
+                                              }
+                                              disabled={!frontMatterEnabled}
+                                              className="mt-1 w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                                        <label className="inline-flex items-center gap-1">
                                           <input
-                                            value={draft.key}
-                                            onChange={(
-                                              event: ChangeEvent<HTMLInputElement>,
-                                            ) =>
-                                              setFrontMatterDrafts((prev) =>
-                                                prev.map((item) =>
-                                                  item.id === field.id
-                                                    ? {
-                                                        ...item,
-                                                        key: event.target.value,
-                                                      }
-                                                    : item,
-                                                ),
-                                              )
-                                            }
-                                            onBlur={() =>
-                                              void handleFrontMatterFieldBlur(
+                                            type="checkbox"
+                                            checked={draft.updateOnClip}
+                                            onChange={(event) =>
+                                              void toggleFrontMatterFieldUpdate(
                                                 field.id,
-                                                {
-                                                  ...draft,
-                                                  key: draft.key,
-                                                },
+                                                event.target.checked,
                                               )
                                             }
                                             disabled={!frontMatterEnabled}
-                                            className="mt-1 w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                                            className="size-4 rounded border border-zinc-300 accent-indigo-600 disabled:opacity-60 dark:border-zinc-600"
                                           />
+                                          クリップ時に値を更新する
                                         </label>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          void removeFrontMatterField(field.id)
-                                        }
-                                        className="self-start rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-500 transition hover:border-rose-400 hover:text-rose-500 dark:border-rose-500/60 dark:text-rose-300"
-                                      >
-                                        削除
-                                      </button>
-                                    </div>
-                                    <div className="mt-3">
-                                      <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                                        値
-                                        <textarea
-                                          value={draft.value}
-                                          onChange={(
-                                            event: ChangeEvent<HTMLTextAreaElement>,
-                                          ) =>
-                                            setFrontMatterDrafts((prev) =>
-                                              prev.map((item) =>
-                                                item.id === field.id
-                                                  ? {
-                                                      ...item,
-                                                      value: event.target.value,
-                                                    }
-                                                  : item,
-                                              ),
-                                            )
-                                          }
-                                          onBlur={() =>
-                                            void handleFrontMatterFieldBlur(
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void removeFrontMatterField(
                                               field.id,
-                                              {
-                                                ...draft,
-                                                value: draft.value,
-                                              },
                                             )
                                           }
+                                          className="ml-auto inline-flex items-center justify-center rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-500 transition hover:border-rose-400 hover:text-rose-500 dark:border-rose-500/60 dark:text-rose-300"
                                           disabled={!frontMatterEnabled}
-                                          className="mt-1 min-h-[88px] w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
-                                        />
-                                      </label>
+                                        >
+                                          削除
+                                        </button>
+                                      </div>
                                     </div>
-                                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
-                                      <input
-                                        type="checkbox"
-                                        checked={draft.updateOnClip}
-                                        onChange={(event) =>
-                                          void toggleFrontMatterFieldUpdate(
-                                            field.id,
-                                            event.target.checked,
-                                          )
-                                        }
-                                        disabled={!frontMatterEnabled}
-                                        className="size-4 rounded border border-zinc-300 accent-indigo-600 disabled:opacity-60 dark:border-zinc-600"
-                                      />
-                                      クリップ時に値を更新する
-                                    </label>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                              まだフロントマター項目がありません。上のボタンから追加してください。
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                まだフロントマター項目がありません。上のボタンから追加してください。
+                              </p>
+                            )}
+                          </div>
+                          <div className="mt-4 rounded-lg bg-zinc-50/80 p-3 text-xs text-zinc-500 dark:bg-zinc-900/70 dark:text-zinc-300">
+                            <p className="font-semibold text-zinc-700 dark:text-zinc-200">
+                              利用できるプレースホルダー
                             </p>
-                          )}
+                            <ul className="mt-2 list-disc space-y-1 pl-4">
+                              <li>
+                                <code>{`{{title}}`}</code> — ページタイトル
+                              </li>
+                              <li>
+                                <code>{`{{url}}`}</code> —
+                                テキストフラグメント付きURL
+                              </li>
+                              <li>
+                                <code>{`{{baseUrl}}`}</code> — ページURL
+                              </li>
+                              <li>
+                                <code>{`{{folder}}`}</code> —
+                                保存先のフォルダー名（例: DDD）
+                              </li>
+                              <li>
+                                <code>{`{{content}}`}</code> —
+                                選択したMarkdown本文
+                              </li>
+                              <li>
+                                <code>{`{{time}}`}</code> /{" "}
+                                <code>{`{{createdAt}}`}</code> —
+                                クリップ時刻（フォーマット済み）
+                              </li>
+                              <li>
+                                <code>{`{{updatedAt}}`}</code> —
+                                クリップ時刻（updateOnClipを有効にすると更新）
+                              </li>
+                              <li>
+                                <code>{`{{isoTime}}`}</code> /{" "}
+                                <code>{`{{isoCreatedAt}}`}</code> /{" "}
+                                <code>{`{{isoUpdatedAt}}`}</code> —
+                                ISO形式の時刻
+                              </li>
+                            </ul>
+                          </div>
                         </div>
-                        <div className="mt-4 rounded-lg bg-zinc-50/80 p-3 text-xs text-zinc-500 dark:bg-zinc-900/70 dark:text-zinc-300">
-                          <p className="font-semibold text-zinc-700 dark:text-zinc-200">
-                            利用できるプレースホルダー
-                          </p>
-                          <ul className="mt-2 list-disc space-y-1 pl-4">
-                            <li>
-                              <code>{`{{title}}`}</code> — ページタイトル
-                            </li>
-                            <li>
-                              <code>{`{{url}}`}</code> —
-                              テキストフラグメント付きURL
-                            </li>
-                            <li>
-                              <code>{`{{baseUrl}}`}</code> — ページURL
-                            </li>
-                            <li>
-                              <code>{`{{folder}}`}</code> —
-                              保存先のフォルダー名（例: DDD）
-                            </li>
-                            <li>
-                              <code>{`{{content}}`}</code> —
-                              選択したMarkdown本文
-                            </li>
-                            <li>
-                              <code>{`{{time}}`}</code> /{" "}
-                              <code>{`{{createdAt}}`}</code> —
-                              クリップ時刻（フォーマット済み）
-                            </li>
-                            <li>
-                              <code>{`{{updatedAt}}`}</code> —
-                              クリップ時刻（updateOnClipを有効にすると更新）
-                            </li>
-                            <li>
-                              <code>{`{{isoTime}}`}</code> /{" "}
-                              <code>{`{{isoCreatedAt}}`}</code> /{" "}
-                              <code>{`{{isoUpdatedAt}}`}</code> — ISO形式の時刻
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
 
-                      <div className="rounded-xl border border-zinc-200 bg-white/80 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
-                        <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
-                          保存フォーマット
-                        </h3>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                          クリップの本文を保存するMarkdownテンプレートです。プレースホルダーは本文にも利用できます。
-                        </p>
-                        <textarea
-                          value={entryTemplateInput}
-                          onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                            setEntryTemplateInput(event.target.value)
-                          }
-                          className="mt-3 h-48 w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
-                        />
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void saveEntryTemplate()}
-                            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
-                          >
-                            フォーマットを保存
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void resetEntryTemplate()}
-                            className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
-                          >
-                            既定に戻す
-                          </button>
+                        <div className="rounded-xl border border-zinc-200 bg-white/80 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
+                          <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
+                            保存フォーマット
+                          </h3>
+                          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                            クリップの本文を保存するMarkdownテンプレートです。プレースホルダーは本文にも利用できます。
+                          </p>
+                          <textarea
+                            value={entryTemplateInput}
+                            onChange={(
+                              event: ChangeEvent<HTMLTextAreaElement>,
+                            ) => setEntryTemplateInput(event.target.value)}
+                            className="mt-3 h-48 w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
+                          />
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void saveEntryTemplate()}
+                              className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+                            >
+                              フォーマットを保存
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void resetEntryTemplate()}
+                              className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+                            >
+                              既定に戻す
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-zinc-200 bg-white/70 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-400">
-                テンプレートが見つかりません。新しいテンプレートを追加してください。
-              </div>
-            )}
+              ) : (
+                <div className="rounded-xl border border-zinc-200 bg-white/70 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-400">
+                  テンプレートが見つかりません。新しいテンプレートを追加してください。
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
@@ -1721,5 +1841,3 @@ function App(): JSX.Element {
     </div>
   );
 }
-
-export default App;

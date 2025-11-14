@@ -209,10 +209,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
         return;
       }
-      
+
       let pathString: string;
       const fileBase = slugify(context.title);
-      
+
       if (subfolderId) {
         const subfolder = category.subfolders.find(
           (sub) => sub.id === subfolderId,
@@ -238,7 +238,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           ? `${folderPrefix}${template.categoryAggregateFileName}`
           : `${folderPrefix}${fileBase}.md`;
       }
-      
+
       const target = clipTargetFromPath(pathString, true);
       const displayPath = [...target.path, target.fileName].join("/");
       const result = await processClipWithTarget(context, target, {

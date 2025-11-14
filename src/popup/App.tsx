@@ -119,22 +119,30 @@ function App(): JSX.Element {
                         </span>
                         <div className="mt-1 space-y-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                           <div>
-                            📁 ディレクトリ: <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{category.folder || "（ルート）"}</code>
+                            📁 ディレクトリ:{" "}
+                            <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
+                              {category.folder || "（ルート）"}
+                            </code>
                           </div>
                           <div>
-                            📄 カテゴリ直下: {category.aggregate
+                            📄 カテゴリ直下:{" "}
+                            {category.aggregate
                               ? `${category.folder}/${template.categoryAggregateFileName}（集約ファイル）`
                               : `${category.folder}/<ページタイトル>.md（ページごと）`}
                           </div>
                           {category.subfolders.length > 0 && (
                             <div className="mt-2 rounded border border-indigo-100 bg-indigo-50/40 p-1.5 dark:border-indigo-500/30 dark:bg-indigo-500/10">
                               <p className="font-semibold text-indigo-700 dark:text-indigo-300">
-                                📂 サブフォルダ ({category.subfolders.length}個):
+                                📂 サブフォルダ ({category.subfolders.length}
+                                個):
                               </p>
                               <ul className="mt-1 space-y-1 pl-2">
                                 {category.subfolders.map((subfolder) => (
                                   <li key={subfolder.id}>
-                                    <span className="font-medium">{subfolder.name}</span> →{" "}
+                                    <span className="font-medium">
+                                      {subfolder.name}
+                                    </span>{" "}
+                                    →{" "}
                                     {subfolder.aggregate
                                       ? `${category.folder}/${subfolder.name}/${template.categoryAggregateFileName}（集約）`
                                       : `${category.folder}/${subfolder.name}/<タイトル>.md（個別）`}
@@ -153,7 +161,8 @@ function App(): JSX.Element {
               <p className="mt-1">カテゴリは未設定です。</p>
             )}
             <p className="mt-2 text-[11px] text-zinc-400 dark:text-zinc-500">
-              カテゴリを使うには右クリックメニューで「Save to category…」を選択してください。
+              カテゴリを使うには右クリックメニューで「Save to
+              category…」を選択してください。
             </p>
           </div>
         </section>

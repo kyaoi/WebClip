@@ -213,10 +213,13 @@ function App(): JSX.Element {
                         {category.label}
                       </span>
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                        📁 ディレクトリ: <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{category.folder || "（ルート）"}</code>
+                        📁 ディレクトリ:{" "}
+                        <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
+                          {category.folder || "（ルート）"}
+                        </code>
                       </span>
                     </div>
-                    
+
                     <div className="flex flex-col gap-2">
                       <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                         カテゴリ直下に保存:
@@ -232,7 +235,8 @@ function App(): JSX.Element {
                         >
                           📄 ページごとに保存
                           <span className="mt-1 block text-xs font-normal text-zinc-500 dark:text-zinc-400">
-                            {category.folder || "（ルート）"}/{"<ページタイトル>.md"}
+                            {category.folder || "（ルート）"}/
+                            {"<ページタイトル>.md"}
                           </span>
                         </button>
                         <button
@@ -245,7 +249,9 @@ function App(): JSX.Element {
                         >
                           📝 集約ファイルに保存
                           <span className="mt-1 block text-xs font-normal text-indigo-600/80 dark:text-indigo-300/80">
-                            {category.folder || "（ルート）"}/{activeTemplate?.categoryAggregateFileName ?? "inbox.md"}
+                            {category.folder || "（ルート）"}/
+                            {activeTemplate?.categoryAggregateFileName ??
+                              "inbox.md"}
                           </span>
                         </button>
                       </div>
@@ -258,7 +264,10 @@ function App(): JSX.Element {
                         </p>
                         <ul className="mt-2 space-y-2">
                           {category.subfolders.map((subfolder) => (
-                            <li key={subfolder.id} className="rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-zinc-700 dark:bg-zinc-900/80">
+                            <li
+                              key={subfolder.id}
+                              className="rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-zinc-700 dark:bg-zinc-900/80"
+                            >
                               <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
                                 {subfolder.name}
                               </p>
@@ -266,27 +275,38 @@ function App(): JSX.Element {
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    void handleSelectCategory(category.id, "page", subfolder.id)
+                                    void handleSelectCategory(
+                                      category.id,
+                                      "page",
+                                      subfolder.id,
+                                    )
                                   }
                                   disabled={saving}
                                   className="rounded border border-indigo-200 bg-white px-2 py-1.5 text-xs transition hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-60 dark:border-indigo-500/50 dark:bg-zinc-900/80"
                                 >
                                   📄 ページごと
                                   <span className="mt-0.5 block text-[10px] text-zinc-500 dark:text-zinc-400">
-                                    {category.folder}/{subfolder.name}/{"<タイトル>.md"}
+                                    {category.folder}/{subfolder.name}/
+                                    {"<タイトル>.md"}
                                   </span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    void handleSelectCategory(category.id, "aggregate", subfolder.id)
+                                    void handleSelectCategory(
+                                      category.id,
+                                      "aggregate",
+                                      subfolder.id,
+                                    )
                                   }
                                   disabled={saving}
                                   className="rounded border border-indigo-400 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-400/70 dark:bg-indigo-500/20 dark:text-indigo-200"
                                 >
                                   📝 集約
                                   <span className="mt-0.5 block text-[10px] text-indigo-600/80 dark:text-indigo-300/80">
-                                    {category.folder}/{subfolder.name}/{activeTemplate?.categoryAggregateFileName ?? "inbox.md"}
+                                    {category.folder}/{subfolder.name}/
+                                    {activeTemplate?.categoryAggregateFileName ??
+                                      "inbox.md"}
                                   </span>
                                 </button>
                               </div>

@@ -10,6 +10,29 @@ import type {
 
 const MARKDOWN_EXTENSION = ".md";
 
+export type DirectoryTreeNodeKind = "directory" | "file";
+
+export interface DirectoryTreeNode {
+  id: string;
+  name: string;
+  path: string;
+  kind: DirectoryTreeNodeKind;
+  children?: DirectoryTreeNode[];
+}
+
+export interface DirectoryTreeResult {
+  rootName: string | null;
+  nodes: DirectoryTreeNode[];
+  totalCount: number;
+  truncated: boolean;
+  requiresPermission: boolean;
+}
+
+interface TraverseState {
+  count: number;
+  truncated: boolean;
+}
+
 function ensureMarkdownExtension(fileName: string): string {
   if (fileName.toLowerCase().endsWith(MARKDOWN_EXTENSION)) {
     return fileName;
@@ -61,6 +84,88 @@ async function traverse(
       return;
     }
   }
+}
+
+export async function buildDirectoryTree(
+  options: { requestAccess?: boolean; maxEntries?: number } = {},
+): Promise<DirectoryTreeResult> {
+  const { requestAccess = false, maxEntries = 500 } = options;
+  const root = await loadRootDirectoryHandle({ requestAccess });
+  if (!root) {
+    return {
+      rootName: null,
+      nodes: [],
+      totalCount: 0,
+      truncated: false,
+      requiresPermission: true,
+    };
+  }
+  const state: TraverseState = { count: 0, truncated: false };
+  const nodes = await collectDirectoryNodes(root, "", state, maxEntries);
+  return {
+    rootName: root.name,
+    nodes,
+    totalCount: state.count,
+    truncated: state.truncated,
+    requiresPermission: false,
+  };
+}
+
+async function collectDirectoryNodes(
+  dir: FileSystemDirectoryHandle,
+  prefix: string,
+  state: TraverseState,
+  maxEntries: number,
+): Promise<DirectoryTreeNode[]> {
+  if (!dir.values) {
+    return [];
+  }
+  const directories: DirectoryTreeNode[] = [];
+  const files: DirectoryTreeNode[] = [];
+  for await (const handle of dir.values()) {
+    if (state.count >= maxEntries) {
+      state.truncated = true;
+      break;
+    }
+    if (handle.kind === "directory") {
+      const path = prefix ? `${prefix}/${handle.name}` : handle.name;
+      state.count += 1;
+      const node: DirectoryTreeNode = {
+        id: path || handle.name,
+        name: handle.name,
+        kind: "directory",
+        path,
+      };
+      if (!state.truncated) {
+        node.children = await collectDirectoryNodes(
+          handle as FileSystemDirectoryHandle,
+          path,
+          state,
+          maxEntries,
+        );
+      }
+      directories.push(node);
+    } else if (
+      handle.kind === "file" &&
+      handle.name.toLowerCase().endsWith(MARKDOWN_EXTENSION)
+    ) {
+      const path = prefix ? `${prefix}/${handle.name}` : handle.name;
+      files.push({
+        id: path,
+        name: handle.name,
+        kind: "file",
+        path,
+      });
+      state.count += 1;
+    }
+    if (state.count >= maxEntries) {
+      state.truncated = true;
+      break;
+    }
+  }
+  directories.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  files.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  return [...directories, ...files];
 }
 
 async function traverseFolders(
@@ -254,7 +359,7 @@ function splitFrontMatter(content: string): FrontMatterParts {
     // Check if followed by newline or is at EOF
     if (
       (idx + 4 < normalized.length && normalized[idx + 4] === "\n") ||
-      (idx + 4 === normalized.length)
+      idx + 4 === normalized.length
     ) {
       closingIndex = idx;
       break;
