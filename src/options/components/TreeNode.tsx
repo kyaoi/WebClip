@@ -20,9 +20,7 @@ function TreeNode({
   onSelect,
   forceExpandAll = false,
 }: TreeNodeProps): JSX.Element {
-  const isDirectory = node.kind === "directory";
-  const isExpanded =
-    isDirectory && (forceExpandAll || expandedNodeIds.has(node.id));
+  const isExpanded = forceExpandAll || expandedNodeIds.has(node.id);
   const isSelected = selectedPath === node.path;
   const paddingLeft = depth * 12;
 
@@ -36,32 +34,23 @@ function TreeNode({
         }`}
         style={{ paddingLeft }}
       >
-        {isDirectory ? (
-          <button
-            type="button"
-            aria-label={isExpanded ? "折りたたむ" : "展開する"}
-            className="flex size-6 items-center justify-center rounded-md text-xs text-zinc-400 transition hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
-            onClick={() => onToggle(node.id)}
-          >
-            <span aria-hidden>{isExpanded ? "▾" : "▸"}</span>
-          </button>
-        ) : (
-          <span className="flex size-6 items-center justify-center text-[10px] text-zinc-300 dark:text-zinc-500">
-            •
-          </span>
-        )}
+        <button
+          type="button"
+          aria-label={isExpanded ? "折りたたむ" : "展開する"}
+          className="flex size-6 items-center justify-center rounded-md text-xs text-zinc-400 transition hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
+          onClick={() => onToggle(node.id)}
+        >
+          <span aria-hidden>{isExpanded ? "▾" : "▸"}</span>
+        </button>
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left"
           onClick={() => onSelect(node.path)}
         >
-          <span className="truncate">{node.name}</span>
+          <span className="truncate">📁 {node.name}</span>
         </button>
       </div>
-      {isDirectory &&
-      isExpanded &&
-      node.children &&
-      node.children.length > 0 ? (
+      {isExpanded && node.children && node.children.length > 0 ? (
         <ul className="ml-4 border-l border-zinc-200/70 pl-2 dark:border-zinc-800/70">
           {node.children.map((child) => (
             <TreeNode
