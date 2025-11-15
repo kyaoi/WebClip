@@ -60,6 +60,40 @@ export async function listFolders(): Promise<string[]> {
   return folders.sort((a, b) => a.localeCompare(b, "ja"));
 }
 
+export async function createDirectory(
+  path: string[],
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const root = await loadRootDirectoryHandle({ requestAccess: true });
+    if (!root) {
+      return {
+        success: false,
+        error: "保存先フォルダが設定されていません。",
+      };
+    }
+    let current: FileSystemDirectoryHandle = root;
+    for (const segment of path) {
+      if (!segment || segment.trim().length === 0) {
+        return { success: false, error: "無効なディレクトリ名です。" };
+      }
+      current = await current.getDirectoryHandle(segment, { create: true });
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to create directory:", error);
+    if ((error as DOMException)?.name === "NotAllowedError") {
+      return {
+        success: false,
+        error: "ディレクトリ作成の権限がありません。",
+      };
+    }
+    return {
+      success: false,
+      error: "ディレクトリの作成に失敗しました。",
+    };
+  }
+}
+
 async function traverse(
   dir: FileSystemDirectoryHandle,
   prefix: string,
