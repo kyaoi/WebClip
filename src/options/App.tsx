@@ -20,7 +20,6 @@ import {
 import { getSettings, updateSettings } from "../shared/settings";
 import { applyTheme } from "../shared/theme";
 import type {
-  CategorySetting,
   CategorySubfolder,
   Settings,
   TemplateFrontMatterField,
@@ -138,9 +137,6 @@ export default function App(): JSX.Element {
       return;
     }
     setSingleFileInput(selectedTemplate.singleFilePath);
-      ),
-    );
-    setTemplateNameInput(selectedTemplate.name);
     setFrontMatterEnabled(selectedTemplate.frontMatter.enabled);
     setFrontMatterDrafts((prev) => {
       const saved = selectedTemplate.frontMatter.fields.map((field) => ({
@@ -206,44 +202,6 @@ export default function App(): JSX.Element {
   const handleTreeSearchChange = useCallback((value: string): void => {
     setTreeSearch(value);
   }, []);
-
-  const refreshFolderOptions = useCallback(
-    async (options: { silent?: boolean } = {}): Promise<void> => {
-      const { silent = false } = options;
-      if (!settings?.rootFolderName) {
-        if (!silent) {
-          setStatus("先に保存先フォルダを設定してください。");
-        }
-        return;
-      }
-      try {
-        setFoldersLoading(true);
-        const folders = await listFolders();
-        setFolderOptions(folders);
-        if (!silent && !folders.length) {
-          setStatus(
-            "サブフォルダが見つかりませんでした。必要に応じて作成してください。",
-          );
-        }
-      } catch (error) {
-        console.error(error);
-        if (!silent) {
-          setStatus("フォルダ一覧の取得に失敗しました。");
-        }
-      } finally {
-        setFoldersLoading(false);
-      }
-    },
-    [settings?.rootFolderName],
-  );
-
-  useEffect(() => {
-    if (settings?.rootFolderName) {
-      void refreshFolderOptions({ silent: true });
-    } else {
-      setFolderOptions([]);
-    }
-  }, [refreshFolderOptions, settings?.rootFolderName]);
 
   // 選択中のディレクトリがルートレベルのカテゴリかどうか判定し、設定を取得
   const selectedCategoryConfig = useMemo(() => {
@@ -575,10 +533,6 @@ export default function App(): JSX.Element {
     await saveSingleFilePath(singleFileInput);
   }
 
-
-
-
-
   // 新: directoryCategorySettings用の関数群
   async function toggleDirectoryCategoryAggregate(
     directoryName: string,
@@ -692,10 +646,6 @@ export default function App(): JSX.Element {
     setSelectedTreePath(null);
     setStatus(`カテゴリ「${directoryName}」を削除しました。`);
   }
-
-
-
-
 
   async function toggleFrontMatterEnabled(next: boolean): Promise<void> {
     if (!selectedTemplate) {
