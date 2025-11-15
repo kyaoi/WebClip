@@ -65,6 +65,12 @@ export interface TemplateFrontMatter {
   fields: TemplateFrontMatterField[];
 }
 
+export interface DirectoryTemplate {
+  directoryPath: string;
+  frontMatter: TemplateFrontMatter;
+  entryTemplate: string;
+}
+
 export interface TemplateSetting {
   id: string;
   name: string;
@@ -74,6 +80,7 @@ export interface TemplateSetting {
   categoryAggregateFileName: string;
   frontMatter: TemplateFrontMatter;
   entryTemplate: string;
+  directoryTemplates: DirectoryTemplate[];
 }
 
 export interface Settings {
@@ -111,6 +118,7 @@ export const DEFAULT_SETTINGS: Settings = {
         fields: [],
       },
       entryTemplate: DEFAULT_ENTRY_TEMPLATE,
+      directoryTemplates: [],
     },
   ],
 };

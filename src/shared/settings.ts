@@ -122,6 +122,7 @@ function normalizeTemplates(raw: LegacySettings): TemplateSetting[] {
       fields: [],
     },
     entryTemplate: DEFAULT_TEMPLATE_PRESET.entryTemplate,
+    directoryTemplates: [],
   };
   return [legacy];
 }
@@ -146,6 +147,13 @@ function normalizeTemplate(
     typeof input.entryTemplate === "string" && input.entryTemplate.trim()
       ? input.entryTemplate
       : DEFAULT_TEMPLATE_PRESET.entryTemplate;
+  const directoryTemplates = Array.isArray(input.directoryTemplates)
+    ? input.directoryTemplates
+        .map(normalizeDirectoryTemplate)
+        .filter(
+          (dt): dt is import("./types").DirectoryTemplate => dt !== undefined,
+        )
+    : [];
   return {
     id,
     name,
@@ -155,6 +163,7 @@ function normalizeTemplate(
     categoryAggregateFileName,
     frontMatter,
     entryTemplate,
+    directoryTemplates,
   };
 }
 
@@ -239,5 +248,24 @@ function normalizeFrontMatterField(
     key,
     value: field.value ?? "",
     updateOnClip: Boolean(field.updateOnClip),
+  };
+}
+
+function normalizeDirectoryTemplate(
+  input: Partial<import("./types").DirectoryTemplate>,
+): import("./types").DirectoryTemplate | undefined {
+  const directoryPath = input.directoryPath?.trim();
+  if (!directoryPath) {
+    return undefined;
+  }
+  const frontMatter = normalizeFrontMatter(input.frontMatter);
+  const entryTemplate =
+    typeof input.entryTemplate === "string" && input.entryTemplate.trim()
+      ? input.entryTemplate
+      : DEFAULT_TEMPLATE_PRESET.entryTemplate;
+  return {
+    directoryPath,
+    frontMatter,
+    entryTemplate,
   };
 }

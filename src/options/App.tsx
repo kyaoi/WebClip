@@ -44,6 +44,7 @@ function createDefaultTemplate(name: string): TemplateSetting {
       fields: [],
     },
     entryTemplate: DEFAULT_ENTRY_TEMPLATE,
+    directoryTemplates: [],
   };
 }
 
