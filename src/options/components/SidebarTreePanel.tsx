@@ -86,7 +86,7 @@ function SidebarTreePanel({
           type="search"
           value={searchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="フォルダやファイル名で検索"
+          placeholder="ディレクトリ名で検索"
           className="rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-100"
         />
       </div>
@@ -139,7 +139,7 @@ function SidebarTreePanel({
             </p>
           ) : (
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Markdownファイルが見つかりませんでした。
+              ディレクトリが見つかりませんでした。
             </p>
           )}
         </div>

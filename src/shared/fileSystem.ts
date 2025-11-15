@@ -121,7 +121,6 @@ async function collectDirectoryNodes(
     return [];
   }
   const directories: DirectoryTreeNode[] = [];
-  const files: DirectoryTreeNode[] = [];
   for await (const handle of dir.values()) {
     if (state.count >= maxEntries) {
       state.truncated = true;
@@ -145,18 +144,6 @@ async function collectDirectoryNodes(
         );
       }
       directories.push(node);
-    } else if (
-      handle.kind === "file" &&
-      handle.name.toLowerCase().endsWith(MARKDOWN_EXTENSION)
-    ) {
-      const path = prefix ? `${prefix}/${handle.name}` : handle.name;
-      files.push({
-        id: path,
-        name: handle.name,
-        kind: "file",
-        path,
-      });
-      state.count += 1;
     }
     if (state.count >= maxEntries) {
       state.truncated = true;
@@ -164,8 +151,7 @@ async function collectDirectoryNodes(
     }
   }
   directories.sort((a, b) => a.name.localeCompare(b.name, "ja"));
-  files.sort((a, b) => a.name.localeCompare(b.name, "ja"));
-  return [...directories, ...files];
+  return directories;
 }
 
 async function traverseFolders(
