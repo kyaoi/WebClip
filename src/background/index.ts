@@ -181,12 +181,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.type === "webclip:category:save") {
-    const { requestId, categoryId, subfolderId, mode } = message as {
-      requestId: string;
-      categoryId: string;
-      subfolderId?: string;
-      mode?: "aggregate" | "page";
-    };
+    const { requestId, categoryId, subfolderId, mode, directoryPath } =
+      message as {
+        requestId: string;
+        categoryId?: string;
+        subfolderId?: string;
+        mode?: "aggregate" | "page";
+        directoryPath?: string;
+      };
     void (async () => {
       const pending = pendingRequests.get(requestId);
       if (!pending || pending.mode !== "category") {
@@ -199,44 +201,62 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const { context, pickerWindowId } = pending;
       const settings = await getSettings();
       const template = getActiveTemplate(settings);
-      const category = template.categories.find(
-        (item) => item.id === categoryId,
-      );
-      if (!category) {
-        sendResponse({
-          ok: false,
-          error: "カテゴリが見つかりませんでした。",
-        });
-        return;
-      }
 
       let pathString: string;
       const fileBase = slugify(context.title);
 
-      if (subfolderId) {
-        const subfolder = category.subfolders.find(
-          (sub) => sub.id === subfolderId,
+      // directoryPathが指定されている場合は直接使用
+      if (directoryPath) {
+        const useAggregate = mode === "aggregate";
+        pathString = useAggregate
+          ? `${directoryPath}/${template.categoryAggregateFileName}`
+          : `${directoryPath}/${fileBase}.md`;
+      } else if (categoryId) {
+        // 既存のカテゴリベースのロジック
+        const category = template.categories.find(
+          (item) => item.id === categoryId,
         );
-        if (!subfolder) {
+        if (!category) {
           sendResponse({
             ok: false,
-            error: "サブフォルダが見つかりませんでした。",
+            error: "カテゴリが見つかりませんでした。",
           });
           return;
         }
-        const useAggregate = mode ? mode === "aggregate" : subfolder.aggregate;
-        const folderPrefix = category.label
-          ? `${category.label}/${subfolder.name}/`
-          : `${subfolder.name}/`;
-        pathString = useAggregate
-          ? `${folderPrefix}${template.categoryAggregateFileName}`
-          : `${folderPrefix}${fileBase}.md`;
+
+        if (subfolderId) {
+          const subfolder = category.subfolders.find(
+            (sub) => sub.id === subfolderId,
+          );
+          if (!subfolder) {
+            sendResponse({
+              ok: false,
+              error: "サブフォルダが見つかりませんでした。",
+            });
+            return;
+          }
+          const useAggregate = mode
+            ? mode === "aggregate"
+            : subfolder.aggregate;
+          const folderPrefix = category.label
+            ? `${category.label}/${subfolder.name}/`
+            : `${subfolder.name}/`;
+          pathString = useAggregate
+            ? `${folderPrefix}${template.categoryAggregateFileName}`
+            : `${folderPrefix}${fileBase}.md`;
+        } else {
+          const useAggregate = mode ? mode === "aggregate" : category.aggregate;
+          const folderPrefix = category.label ? `${category.label}/` : "";
+          pathString = useAggregate
+            ? `${folderPrefix}${template.categoryAggregateFileName}`
+            : `${folderPrefix}${fileBase}.md`;
+        }
       } else {
-        const useAggregate = mode ? mode === "aggregate" : category.aggregate;
-        const folderPrefix = category.label ? `${category.label}/` : "";
-        pathString = useAggregate
-          ? `${folderPrefix}${template.categoryAggregateFileName}`
-          : `${folderPrefix}${fileBase}.md`;
+        sendResponse({
+          ok: false,
+          error: "カテゴリまたはディレクトリパスが必要です。",
+        });
+        return;
       }
 
       const target = clipTargetFromPath(pathString, true);

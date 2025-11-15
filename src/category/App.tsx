@@ -1,13 +1,13 @@
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  buildDirectoryTree,
+  type DirectoryTreeResult,
+} from "../shared/fileSystem";
 import { getActiveTemplate } from "../shared/settings";
 import { applyTheme } from "../shared/theme";
-import type {
-  CategorySetting,
-  SelectionContext,
-  Settings,
-} from "../shared/types";
-import CategoryTreeNode from "./components/CategoryTreeNode";
+import type { SelectionContext, Settings } from "../shared/types";
+import DirectoryTreeNode from "./components/DirectoryTreeNode";
 
 interface CategoryInitResponse {
   ok: boolean;
@@ -35,6 +35,9 @@ function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [directoryTree, setDirectoryTree] =
+    useState<DirectoryTreeResult | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
 
   const initialize = useCallback(async () => {
     setLoading(true);
@@ -70,9 +73,27 @@ function App(): JSX.Element {
     }
   }, []);
 
+  const loadDirectoryTree = useCallback(async () => {
+    setTreeLoading(true);
+    try {
+      const tree = await buildDirectoryTree({ requestAccess: false });
+      setDirectoryTree(tree);
+    } catch (err) {
+      console.error("Failed to load directory tree:", err);
+    } finally {
+      setTreeLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (settings?.rootFolderName) {
+      void loadDirectoryTree();
+    }
+  }, [settings?.rootFolderName, loadDirectoryTree]);
 
   useEffect(() => {
     if (settings) {
@@ -87,24 +108,14 @@ function App(): JSX.Element {
     return getActiveTemplate(settings);
   }, [settings]);
 
-  const categories = useMemo<CategorySetting[]>(() => {
-    if (!activeTemplate) {
-      return [];
-    }
-    return [...activeTemplate.categories].sort((a, b) =>
-      a.label.localeCompare(b.label, "ja"),
-    );
-  }, [activeTemplate]);
-
   const selectionSnippet = useMemo(() => {
     const text = context?.selection.trim().replace(/\s+/g, " ") ?? "";
     return text.slice(0, 140);
   }, [context]);
 
-  async function handleSelectCategory(
-    categoryId: string,
+  async function handleSelectDirectory(
+    directoryPath: string,
     mode: CategoryClipMode,
-    subfolderId?: string,
   ): Promise<void> {
     if (!requestId) {
       return;
@@ -114,8 +125,7 @@ function App(): JSX.Element {
       const response = (await chrome.runtime.sendMessage({
         type: "webclip:category:save",
         requestId,
-        categoryId,
-        subfolderId,
+        directoryPath,
         mode,
       })) as CategorySaveResponse;
       if (!response.ok || !response.result) {
@@ -199,15 +209,19 @@ function App(): JSX.Element {
 
         <section className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-            カテゴリを選択
+            保存先ディレクトリを選択
           </h2>
-          {categories.length ? (
+          {treeLoading ? (
+            <p className="mt-3 text-center text-xs text-zinc-500 dark:text-zinc-400">
+              ディレクトリを読み込み中…
+            </p>
+          ) : directoryTree && directoryTree.nodes.length > 0 ? (
             <ul className="mt-3 space-y-2">
-              {categories.map((category) => (
-                <CategoryTreeNode
-                  key={category.id}
-                  category={category}
-                  onSelectCategory={handleSelectCategory}
+              {directoryTree.nodes.map((node) => (
+                <DirectoryTreeNode
+                  key={node.id}
+                  node={node}
+                  onSelectDirectory={handleSelectDirectory}
                   saving={saving}
                   aggregateFileName={
                     activeTemplate?.categoryAggregateFileName ?? "inbox.md"
@@ -217,7 +231,7 @@ function App(): JSX.Element {
             </ul>
           ) : (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
-              カテゴリが設定されていません。オプションページでカテゴリを追加してください。
+              ディレクトリが見つかりませんでした。オプションページで保存先フォルダを設定してください。
             </div>
           )}
           <div className="mt-4 flex justify-end">
