@@ -264,6 +264,27 @@ export default function App(): JSX.Element {
     }
   }, [refreshFolderOptions, settings?.rootFolderName]);
 
+  // 選択中のディレクトリがルートレベルのカテゴリかどうか判定し、設定を取得
+  const selectedCategoryConfig = useMemo(() => {
+    if (!selectedTreePath || !selectedTemplate) {
+      return null;
+    }
+    const pathParts = selectedTreePath.split("/").filter(Boolean);
+    if (pathParts.length === 0) {
+      return null;
+    }
+    // ルートレベル（第1階層）のディレクトリのみ
+    if (pathParts.length !== 1) {
+      return null;
+    }
+    const rootDirName = pathParts[0];
+    const config = selectedTemplate.directoryCategorySettings[rootDirName];
+    if (!config) {
+      return null;
+    }
+    return { directoryName: rootDirName, config };
+  }, [selectedTreePath, selectedTemplate]);
+
   const refreshDirectoryTree = useCallback(
     async (options: { interactive?: boolean } = {}): Promise<void> => {
       if (!settings?.rootFolderName) {
@@ -312,27 +333,6 @@ export default function App(): JSX.Element {
     void refreshDirectoryTree({ interactive: true });
   }, [refreshDirectoryTree]);
 
-  const handleCreateDirectory = useCallback(
-    async (parentPath: string): Promise<void> => {
-      const name = prompt("新しいフォルダ名を入力してください:");
-      if (!name || !name.trim()) {
-        return;
-      }
-      const trimmed = name.trim();
-      const pathSegments = parentPath
-        ? [...parentPath.split("/"), trimmed]
-        : [trimmed];
-      const result = await createDirectory(pathSegments);
-      if (result.success) {
-        setStatus(`フォルダ「${trimmed}」を作成しました。`);
-        await refreshDirectoryTree({ interactive: false });
-      } else {
-        setStatus(result.error ?? "フォルダの作成に失敗しました。");
-      }
-    },
-    [refreshDirectoryTree],
-  );
-
   const applyTemplateUpdate = useCallback(
     async (
       templateId: string,
@@ -351,6 +351,46 @@ export default function App(): JSX.Element {
       setSettings(updated);
     },
     [settings],
+  );
+
+  const handleCreateDirectory = useCallback(
+    async (parentPath: string): Promise<void> => {
+      const name = prompt("新しいフォルダ名を入力してください:");
+      if (!name || !name.trim()) {
+        return;
+      }
+      const trimmed = name.trim();
+      const pathSegments = parentPath
+        ? [...parentPath.split("/"), trimmed]
+        : [trimmed];
+      const result = await createDirectory(pathSegments);
+      if (result.success) {
+        setStatus(`フォルダ「${trimmed}」を作成しました。`);
+        await refreshDirectoryTree({ interactive: false });
+
+        // ルートレベルのディレクトリ作成時は自動的にdirectoryCategorySettingsに追加
+        if (!parentPath && selectedTemplate) {
+          await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+            ...template,
+            directoryCategorySettings: {
+              ...template.directoryCategorySettings,
+              [trimmed]: {
+                aggregate: false,
+                subfolders: [],
+              },
+            },
+          }));
+          // 新しく作成したディレクトリを選択
+          setSelectedTreePath(trimmed);
+          setStatus(
+            `フォルダ「${trimmed}」を作成し、カテゴリとして追加しました。`,
+          );
+        }
+      } else {
+        setStatus(result.error ?? "フォルダの作成に失敗しました。");
+      }
+    },
+    [refreshDirectoryTree, selectedTemplate, applyTemplateUpdate],
   );
 
   async function chooseFolder(): Promise<void> {
@@ -643,6 +683,120 @@ export default function App(): JSX.Element {
         ? `カテゴリ「${current.label}」は集約ファイルに保存します。`
         : `カテゴリ「${current.label}」はページごとのファイルに保存します。`,
     );
+  }
+
+  // 新: directoryCategorySettings用の関数群
+  async function toggleDirectoryCategoryAggregate(
+    directoryName: string,
+    aggregate: boolean,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      directoryCategorySettings: {
+        ...template.directoryCategorySettings,
+        [directoryName]: {
+          ...template.directoryCategorySettings[directoryName],
+          aggregate,
+        },
+      },
+    }));
+    setStatus(
+      `カテゴリ「${directoryName}」の集約モードを${aggregate ? "有効" : "無効"}にしました。`,
+    );
+  }
+
+  async function addDirectorySubfolder(
+    directoryName: string,
+    subfolderName: string,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    const newSubfolder: CategorySubfolder = {
+      id: crypto.randomUUID(),
+      name: subfolderName,
+      aggregate: false,
+    };
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      directoryCategorySettings: {
+        ...template.directoryCategorySettings,
+        [directoryName]: {
+          ...template.directoryCategorySettings[directoryName],
+          subfolders: [
+            ...template.directoryCategorySettings[directoryName].subfolders,
+            newSubfolder,
+          ],
+        },
+      },
+    }));
+    setStatus(`サブフォルダ「${subfolderName}」を追加しました。`);
+  }
+
+  async function removeDirectorySubfolder(
+    directoryName: string,
+    subfolderId: string,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      directoryCategorySettings: {
+        ...template.directoryCategorySettings,
+        [directoryName]: {
+          ...template.directoryCategorySettings[directoryName],
+          subfolders: template.directoryCategorySettings[
+            directoryName
+          ].subfolders.filter((sub) => sub.id !== subfolderId),
+        },
+      },
+    }));
+    setStatus("サブフォルダを削除しました。");
+  }
+
+  async function toggleDirectorySubfolderAggregate(
+    directoryName: string,
+    subfolderId: string,
+    aggregate: boolean,
+  ): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      directoryCategorySettings: {
+        ...template.directoryCategorySettings,
+        [directoryName]: {
+          ...template.directoryCategorySettings[directoryName],
+          subfolders: template.directoryCategorySettings[
+            directoryName
+          ].subfolders.map((sub) =>
+            sub.id === subfolderId ? { ...sub, aggregate } : sub,
+          ),
+        },
+      },
+    }));
+  }
+
+  async function removeDirectoryCategory(directoryName: string): Promise<void> {
+    if (!selectedTemplate) {
+      return;
+    }
+    if (!confirm(`カテゴリ「${directoryName}」を削除しますか？`)) {
+      return;
+    }
+    const { [directoryName]: _, ...rest } =
+      selectedTemplate.directoryCategorySettings;
+    await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+      ...template,
+      directoryCategorySettings: rest,
+    }));
+    setSelectedTreePath(null);
+    setStatus(`カテゴリ「${directoryName}」を削除しました。`);
   }
 
   async function removeCategory(id: string): Promise<void> {
