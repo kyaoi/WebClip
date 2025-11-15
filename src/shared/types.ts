@@ -48,7 +48,6 @@ export interface CategorySubfolder {
 export interface CategorySetting {
   id: string;
   label: string;
-  folder: string;
   aggregate: boolean;
   subfolders: CategorySubfolder[];
 }

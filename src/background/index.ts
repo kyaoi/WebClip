@@ -225,15 +225,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           return;
         }
         const useAggregate = mode ? mode === "aggregate" : subfolder.aggregate;
-        const folderPrefix = category.folder
-          ? `${category.folder}/${subfolder.name}/`
+        const folderPrefix = category.label
+          ? `${category.label}/${subfolder.name}/`
           : `${subfolder.name}/`;
         pathString = useAggregate
           ? `${folderPrefix}${template.categoryAggregateFileName}`
           : `${folderPrefix}${fileBase}.md`;
       } else {
         const useAggregate = mode ? mode === "aggregate" : category.aggregate;
-        const folderPrefix = category.folder ? `${category.folder}/` : "";
+        const folderPrefix = category.label ? `${category.label}/` : "";
         pathString = useAggregate
           ? `${folderPrefix}${template.categoryAggregateFileName}`
           : `${folderPrefix}${fileBase}.md`;

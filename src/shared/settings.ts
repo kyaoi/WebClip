@@ -1,5 +1,4 @@
 import { storageGet, storageSet } from "./chromeStorage";
-import { slugify } from "./format";
 import {
   type CategorySetting,
   type CategorySubfolder,
@@ -180,7 +179,6 @@ function normalizeCategory(
   if (!label) {
     return undefined;
   }
-  const folder = input.folder?.trim() || slugify(label);
   const aggregate = Boolean(input.aggregate);
   const subfolders = Array.isArray(input.subfolders)
     ? input.subfolders
@@ -190,7 +188,6 @@ function normalizeCategory(
   return {
     id: input.id || crypto.randomUUID(),
     label,
-    folder,
     aggregate,
     subfolders,
   };

@@ -121,14 +121,14 @@ function App(): JSX.Element {
                           <div>
                             📁 ディレクトリ:{" "}
                             <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
-                              {category.folder || "（ルート）"}
+                              {category.label || "（ルート）"}
                             </code>
                           </div>
                           <div>
                             📄 カテゴリ直下:{" "}
                             {category.aggregate
-                              ? `${category.folder}/${template.categoryAggregateFileName}（集約ファイル）`
-                              : `${category.folder}/<ページタイトル>.md（ページごと）`}
+                              ? `${category.label}/${template.categoryAggregateFileName}（集約ファイル）`
+                              : `${category.label}/<ページタイトル>.md（ページごと）`}
                           </div>
                           {category.subfolders.length > 0 && (
                             <div className="mt-2 rounded border border-indigo-100 bg-indigo-50/40 p-1.5 dark:border-indigo-500/30 dark:bg-indigo-500/10">
@@ -144,8 +144,8 @@ function App(): JSX.Element {
                                     </span>{" "}
                                     →{" "}
                                     {subfolder.aggregate
-                                      ? `${category.folder}/${subfolder.name}/${template.categoryAggregateFileName}（集約）`
-                                      : `${category.folder}/${subfolder.name}/<タイトル>.md（個別）`}
+                                      ? `${category.label}/${subfolder.name}/${template.categoryAggregateFileName}（集約）`
+                                      : `${category.label}/${subfolder.name}/<タイトル>.md（個別）`}
                                   </li>
                                 ))}
                               </ul>

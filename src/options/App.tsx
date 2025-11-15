@@ -13,7 +13,6 @@ import {
   type DirectoryTreeResult,
   listFolders,
 } from "../shared/fileSystem";
-import { slugify } from "../shared/format";
 import {
   clearRootDirectoryHandle,
   loadRootDirectoryHandle,
@@ -56,9 +55,9 @@ export default function App(): JSX.Element {
   const [singleFileInput, setSingleFileInput] = useState("");
   const [aggregateFileNameInput, setAggregateFileNameInput] = useState("");
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
-  const [categoryDrafts, setCategoryDrafts] = useState<
-    Record<string, { label: string; folder: string }>
-  >({});
+  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
@@ -154,7 +153,7 @@ export default function App(): JSX.Element {
       Object.fromEntries(
         selectedTemplate.categories.map((category) => [
           category.id,
-          { label: category.label, folder: category.folder },
+          category.label,
         ]),
       ),
     );
@@ -586,7 +585,6 @@ export default function App(): JSX.Element {
     const nextCategory: CategorySetting = {
       id: crypto.randomUUID(),
       label,
-      folder: slugify(label),
       aggregate: false,
       subfolders: [],
     };
@@ -598,31 +596,27 @@ export default function App(): JSX.Element {
     setStatus(`カテゴリ「${label}」を追加しました。`);
   }
 
-  async function handleCategoryBlur(
-    id: string,
-    draftOverride?: { label: string; folder: string },
-  ): Promise<void> {
+  async function handleCategoryBlur(id: string, label?: string): Promise<void> {
     if (!selectedTemplate) {
       return;
     }
-    const draft = draftOverride ?? categoryDrafts[id];
+    const draft = label ?? categoryDrafts[id];
     const current = selectedTemplate.categories.find((item) => item.id === id);
     if (!draft || !current) {
       return;
     }
-    const label = draft.label.trim();
-    if (!label) {
+    const trimmed = draft.trim();
+    if (!trimmed) {
       setStatus("カテゴリ名を入力してください。");
       return;
     }
-    const folder = draft.folder.trim() || slugify(label);
     await applyTemplateUpdate(selectedTemplate.id, (template) => ({
       ...template,
       categories: template.categories.map((item) =>
-        item.id === id ? { ...item, label, folder } : item,
+        item.id === id ? { ...item, label: trimmed } : item,
       ),
     }));
-    setStatus(`カテゴリ「${label}」を更新しました。`);
+    setStatus(`カテゴリ「${trimmed}」を更新しました。`);
   }
 
   async function toggleCategoryAggregate(
@@ -1322,10 +1316,8 @@ export default function App(): JSX.Element {
                         {selectedTemplate.categories.length ? (
                           <ul className="mt-4 space-y-3">
                             {selectedTemplate.categories.map((category) => {
-                              const draft = categoryDrafts[category.id] ?? {
-                                label: category.label,
-                                folder: category.folder,
-                              };
+                              const draft =
+                                categoryDrafts[category.id] ?? category.label;
                               return (
                                 <li
                                   key={category.id}
@@ -1333,36 +1325,16 @@ export default function App(): JSX.Element {
                                 >
                                   <div className="flex flex-col gap-3">
                                     <label className="flex flex-col gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                                      カテゴリ名
+                                      カテゴリ名（ディレクトリ名）
                                       <input
-                                        value={draft.label}
+                                        value={draft}
                                         onChange={(
                                           event: ChangeEvent<HTMLInputElement>,
                                         ) =>
-                                          setCategoryDrafts((prev) => {
-                                            const prevEntry = prev[
-                                              category.id
-                                            ] ?? {
-                                              label: category.label,
-                                              folder: category.folder,
-                                            };
-                                            const nextLabel =
-                                              event.target.value;
-                                            const shouldSyncFolder =
-                                              prevEntry.folder ===
-                                                slugify(prevEntry.label) ||
-                                              prevEntry.folder ===
-                                                category.folder;
-                                            return {
-                                              ...prev,
-                                              [category.id]: {
-                                                label: nextLabel,
-                                                folder: shouldSyncFolder
-                                                  ? slugify(nextLabel)
-                                                  : prevEntry.folder,
-                                              },
-                                            };
-                                          })
+                                          setCategoryDrafts((prev) => ({
+                                            ...prev,
+                                            [category.id]: event.target.value,
+                                          }))
                                         }
                                         onBlur={() =>
                                           void handleCategoryBlur(
@@ -1372,69 +1344,9 @@ export default function App(): JSX.Element {
                                         }
                                         className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
                                       />
-                                    </label>
-                                    <label className="flex flex-col gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                                      ディレクトリ名（カテゴリのベースフォルダ）
-                                      <input
-                                        value={draft.folder}
-                                        onChange={(
-                                          event: ChangeEvent<HTMLInputElement>,
-                                        ) =>
-                                          setCategoryDrafts((prev) => {
-                                            const prevEntry =
-                                              prev[category.id] ?? draft;
-                                            return {
-                                              ...prev,
-                                              [category.id]: {
-                                                label: prevEntry.label,
-                                                folder: event.target.value,
-                                              },
-                                            };
-                                          })
-                                        }
-                                        onBlur={() =>
-                                          void handleCategoryBlur(
-                                            category.id,
-                                            draft,
-                                          )
-                                        }
-                                        list={folderDatalistId}
-                                        className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-800 shadow-inner focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-100"
-                                      />
-                                      {folderOptions.length ? (
-                                        <select
-                                          defaultValue=""
-                                          onChange={(event) => {
-                                            const selected = event.target.value;
-                                            if (!selected) {
-                                              return;
-                                            }
-                                            const nextDraft = {
-                                              label: draft.label,
-                                              folder: selected,
-                                            };
-                                            setCategoryDrafts((prev) => ({
-                                              ...prev,
-                                              [category.id]: nextDraft,
-                                            }));
-                                            void handleCategoryBlur(
-                                              category.id,
-                                              nextDraft,
-                                            );
-                                            event.target.value = "";
-                                          }}
-                                          className="mt-2 rounded-lg border border-zinc-200 bg-white/60 px-2 py-1 text-xs text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-300"
-                                        >
-                                          <option value="">
-                                            候補から選択…
-                                          </option>
-                                          {folderOptions.map((folder) => (
-                                            <option key={folder} value={folder}>
-                                              {folder}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      ) : null}
+                                      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                        この名前がそのままディレクトリ名になります
+                                      </p>
                                     </label>
 
                                     <div className="rounded-lg border border-indigo-100 bg-indigo-50/30 p-3 dark:border-indigo-500/30 dark:bg-indigo-500/10">
@@ -1474,9 +1386,8 @@ export default function App(): JSX.Element {
                                                       {subfolder.name}
                                                     </p>
                                                     <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                                                      {draft.folder ||
-                                                        slugify(draft.label)}
-                                                      /{subfolder.name}/
+                                                      {category.label}/
+                                                      {subfolder.name}/
                                                       {subfolder.aggregate
                                                         ? selectedTemplate.categoryAggregateFileName
                                                         : "<ページタイトル>.md"}
@@ -1562,7 +1473,7 @@ export default function App(): JSX.Element {
                                         カテゴリ直下の保存パス例:
                                       </span>{" "}
                                       <code className="rounded bg-white px-1.5 py-0.5 font-mono dark:bg-zinc-900">
-                                        {draft.folder || slugify(draft.label)}/
+                                        {category.label}/
                                         {category.aggregate
                                           ? selectedTemplate.categoryAggregateFileName
                                           : "<ページタイトル>.md"}
