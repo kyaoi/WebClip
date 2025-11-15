@@ -1360,6 +1360,153 @@ export default function App(): JSX.Element {
                         </p>
                       </div>
 
+                      {/* 新: ツリーベースのカテゴリ設定パネル */}
+                      {selectedCategoryConfig ? (
+                        <div className="rounded-xl border border-green-200 bg-green-50/40 p-4 shadow-sm dark:border-green-700 dark:bg-green-900/20">
+                          <h3 className="text-base font-semibold text-green-800 dark:text-green-100">
+                            📁 {selectedCategoryConfig.directoryName}
+                          </h3>
+                          <p className="mt-1 text-xs text-green-600 dark:text-green-300">
+                            選択中のカテゴリディレクトリの設定
+                          </p>
+
+                          <div className="mt-4 flex flex-col gap-3">
+                            <label className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  selectedCategoryConfig.config.aggregate
+                                }
+                                onChange={(event) =>
+                                  void toggleDirectoryCategoryAggregate(
+                                    selectedCategoryConfig.directoryName,
+                                    event.target.checked,
+                                  )
+                                }
+                                className="size-4 rounded border border-zinc-300 accent-green-600 dark:border-zinc-600"
+                              />
+                              集約ファイルモード
+                              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                （すべてのクリップを{" "}
+                                {selectedTemplate.categoryAggregateFileName}{" "}
+                                に追記）
+                              </span>
+                            </label>
+
+                            <div className="rounded-lg border border-green-100 bg-white/50 p-3 dark:border-green-800 dark:bg-green-950/30">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-semibold text-green-700 dark:text-green-300">
+                                  📂 サブフォルダ
+                                </h4>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const name = prompt(
+                                      "サブフォルダ名を入力してください:",
+                                    );
+                                    if (name && name.trim()) {
+                                      void addDirectorySubfolder(
+                                        selectedCategoryConfig.directoryName,
+                                        name.trim(),
+                                      );
+                                    }
+                                  }}
+                                  className="rounded-full border border-green-200 bg-white px-2 py-1 text-xs font-medium text-green-600 transition hover:border-green-400 dark:border-green-700 dark:bg-green-950 dark:text-green-300"
+                                >
+                                  + 追加
+                                </button>
+                              </div>
+                              {selectedCategoryConfig.config.subfolders.length >
+                              0 ? (
+                                <ul className="mt-3 space-y-2">
+                                  {selectedCategoryConfig.config.subfolders.map(
+                                    (subfolder) => (
+                                      <li
+                                        key={subfolder.id}
+                                        className="rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-zinc-700 dark:bg-zinc-900/80"
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex-1">
+                                            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                                              {subfolder.name}
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                              {
+                                                selectedCategoryConfig.directoryName
+                                              }
+                                              /{subfolder.name}/
+                                              {subfolder.aggregate
+                                                ? selectedTemplate.categoryAggregateFileName
+                                                : "<ページタイトル>.md"}
+                                            </p>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <label className="inline-flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-300">
+                                              <input
+                                                type="checkbox"
+                                                checked={subfolder.aggregate}
+                                                onChange={(event) =>
+                                                  void toggleDirectorySubfolderAggregate(
+                                                    selectedCategoryConfig.directoryName,
+                                                    subfolder.id,
+                                                    event.target.checked,
+                                                  )
+                                                }
+                                                className="size-3 rounded border border-zinc-300 accent-green-600 dark:border-zinc-600"
+                                              />
+                                              集約
+                                            </label>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void removeDirectorySubfolder(
+                                                  selectedCategoryConfig.directoryName,
+                                                  subfolder.id,
+                                                )
+                                              }
+                                              className="rounded-full border border-rose-200 px-2 py-0.5 text-xs text-rose-500 transition hover:border-rose-400 dark:border-rose-500/60 dark:text-rose-300"
+                                            >
+                                              削除
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </li>
+                                    ),
+                                  )}
+                                </ul>
+                              ) : (
+                                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                  サブフォルダはまだありません。
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void removeDirectoryCategory(
+                                  selectedCategoryConfig.directoryName,
+                                )
+                              }
+                              className="self-start rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-500 transition hover:border-rose-400 dark:border-rose-500/60 dark:text-rose-300"
+                            >
+                              このカテゴリを削除
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-zinc-200 bg-zinc-50/40 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/40">
+                          <h3 className="text-base font-semibold text-zinc-700 dark:text-zinc-200">
+                            カテゴリ設定
+                          </h3>
+                          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                            左のツリーでルートレベルのディレクトリを選択すると、そのカテゴリの設定を編集できます。
+                          </p>
+                          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                            新しいカテゴリを追加するには、ツリーのルート（一番上の階層）で+ボタンをクリックしてディレクトリを作成してください。
+                          </p>
+                        </div>
+                      )}
                       <div className="rounded-xl border border-zinc-200 bg-white/70 p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80">
                         <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
                           カテゴリ分類スタイル
