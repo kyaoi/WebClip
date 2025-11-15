@@ -311,27 +311,6 @@ export default function App(): JSX.Element {
     void refreshDirectoryTree({ interactive: true });
   }, [refreshDirectoryTree]);
 
-  const handleCreateDirectory = useCallback(
-    async (parentPath: string): Promise<void> => {
-      const name = prompt("新しいフォルダ名を入力してください:");
-      if (!name || !name.trim()) {
-        return;
-      }
-      const trimmed = name.trim();
-      const pathSegments = parentPath
-        ? [...parentPath.split("/"), trimmed]
-        : [trimmed];
-      const result = await createDirectory(pathSegments);
-      if (result.success) {
-        setStatus(`フォルダ「${trimmed}」を作成しました。`);
-        await refreshDirectoryTree({ interactive: false });
-      } else {
-        setStatus(result.error ?? "フォルダの作成に失敗しました。");
-      }
-    },
-    [refreshDirectoryTree],
-  );
-
   const applyTemplateUpdate = useCallback(
     async (
       templateId: string,
@@ -352,29 +331,42 @@ export default function App(): JSX.Element {
     [settings],
   );
 
-  const handleCreateCategory = useCallback(
-    async (directoryPath: string): Promise<void> => {
-      if (!selectedTemplate) {
-        setStatus("テンプレートを選択してください。");
+  const handleCreateDirectory = useCallback(
+    async (parentPath: string): Promise<void> => {
+      const name = prompt("新しいフォルダ名を入力してください:");
+      if (!name || !name.trim()) {
         return;
       }
-      const pathParts = directoryPath.split("/").filter(Boolean);
-      const categoryName = pathParts[pathParts.length - 1] || directoryPath;
+      const trimmed = name.trim();
+      const pathSegments = parentPath
+        ? [...parentPath.split("/"), trimmed]
+        : [trimmed];
+      const result = await createDirectory(pathSegments);
+      if (result.success) {
+        setStatus(`フォルダ「${trimmed}」を作成しました。`);
+        await refreshDirectoryTree({ interactive: false });
 
-      const nextCategory: CategorySetting = {
-        id: crypto.randomUUID(),
-        label: categoryName,
-        aggregate: false,
-        subfolders: [],
-      };
-
-      await applyTemplateUpdate(selectedTemplate.id, (template) => ({
-        ...template,
-        categories: [...template.categories, nextCategory],
-      }));
-      setStatus(`カテゴリ「${categoryName}」を追加しました。`);
+        // ルートレベルのディレクトリ作成時は自動的にカテゴリとして追加
+        if (!parentPath && selectedTemplate) {
+          const newCategory: CategorySetting = {
+            id: crypto.randomUUID(),
+            label: trimmed,
+            aggregate: false,
+            subfolders: [],
+          };
+          await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+            ...template,
+            categories: [...template.categories, newCategory],
+          }));
+          setStatus(
+            `フォルダ「${trimmed}」を作成し、カテゴリとして追加しました。`,
+          );
+        }
+      } else {
+        setStatus(result.error ?? "フォルダの作成に失敗しました。");
+      }
     },
-    [selectedTemplate, applyTemplateUpdate],
+    [refreshDirectoryTree, selectedTemplate, applyTemplateUpdate],
   );
 
   async function chooseFolder(): Promise<void> {
@@ -1063,7 +1055,6 @@ export default function App(): JSX.Element {
               selectedPath={selectedTreePath}
               onSelectPath={handleTreePathSelect}
               onCreateDirectory={handleCreateDirectory}
-              onCreateCategory={handleCreateCategory}
               onChooseFolder={chooseFolder}
               onReloadTree={handleTreeReload}
               onReRequestPermission={reRequestPermission}

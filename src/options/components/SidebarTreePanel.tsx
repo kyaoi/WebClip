@@ -14,7 +14,6 @@ interface SidebarTreePanelProps {
   selectedPath: string | null;
   onSelectPath: (path: string) => void;
   onCreateDirectory: (parentPath: string) => void;
-  onCreateCategory: (directoryPath: string) => void;
   onChooseFolder: () => void;
   onReloadTree: () => void;
   onReRequestPermission: () => void;
@@ -37,7 +36,6 @@ function SidebarTreePanel({
   selectedPath,
   onSelectPath,
   onCreateDirectory,
-  onCreateCategory,
   onChooseFolder,
   onReloadTree,
   onReRequestPermission,
@@ -133,7 +131,6 @@ function SidebarTreePanel({
                     onToggle={onToggleNode}
                     onSelect={onSelectPath}
                     onCreateDirectory={onCreateDirectory}
-                    onCreateCategory={onCreateCategory}
                     forceExpandAll={forceExpandAll}
                   />
                 ))}
