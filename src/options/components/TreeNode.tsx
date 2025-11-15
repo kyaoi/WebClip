@@ -8,6 +8,7 @@ interface TreeNodeProps {
   selectedPath: string | null;
   onToggle: (nodeId: string) => void;
   onSelect: (path: string) => void;
+  onCreateDirectory?: (parentPath: string) => void;
   forceExpandAll?: boolean;
 }
 
@@ -18,6 +19,7 @@ function TreeNode({
   selectedPath,
   onToggle,
   onSelect,
+  onCreateDirectory,
   forceExpandAll = false,
 }: TreeNodeProps): JSX.Element {
   const isExpanded = forceExpandAll || expandedNodeIds.has(node.id);
@@ -49,6 +51,20 @@ function TreeNode({
         >
           <span className="truncate">📁 {node.name}</span>
         </button>
+        {onCreateDirectory && (
+          <button
+            type="button"
+            aria-label="新しいフォルダを作成"
+            className="flex size-6 items-center justify-center rounded-md text-xs text-zinc-400 opacity-0 transition hover:text-indigo-600 group-hover:opacity-100 dark:text-zinc-500 dark:hover:text-indigo-400"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateDirectory(node.path);
+            }}
+            title="新しいフォルダを作成"
+          >
+            <span aria-hidden>+</span>
+          </button>
+        )}
       </div>
       {isExpanded && node.children && node.children.length > 0 ? (
         <ul className="ml-4 border-l border-zinc-200/70 pl-2 dark:border-zinc-800/70">
@@ -61,6 +77,7 @@ function TreeNode({
               selectedPath={selectedPath}
               onToggle={onToggle}
               onSelect={onSelect}
+              onCreateDirectory={onCreateDirectory}
               forceExpandAll={forceExpandAll}
             />
           ))}

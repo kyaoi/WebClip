@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   buildDirectoryTree,
+  createDirectory,
   type DirectoryTreeResult,
   listFolders,
 } from "../shared/fileSystem";
@@ -309,6 +310,27 @@ export default function App(): JSX.Element {
   const handleTreeReload = useCallback(() => {
     void refreshDirectoryTree({ interactive: true });
   }, [refreshDirectoryTree]);
+
+  const handleCreateDirectory = useCallback(
+    async (parentPath: string): Promise<void> => {
+      const name = prompt("新しいフォルダ名を入力してください:");
+      if (!name || !name.trim()) {
+        return;
+      }
+      const trimmed = name.trim();
+      const pathSegments = parentPath
+        ? [...parentPath.split("/"), trimmed]
+        : [trimmed];
+      const result = await createDirectory(pathSegments);
+      if (result.success) {
+        setStatus(`フォルダ「${trimmed}」を作成しました。`);
+        await refreshDirectoryTree({ interactive: false });
+      } else {
+        setStatus(result.error ?? "フォルダの作成に失敗しました。");
+      }
+    },
+    [refreshDirectoryTree],
+  );
 
   const applyTemplateUpdate = useCallback(
     async (
@@ -1020,6 +1042,7 @@ export default function App(): JSX.Element {
               onToggleNode={handleTreeNodeToggle}
               selectedPath={selectedTreePath}
               onSelectPath={handleTreePathSelect}
+              onCreateDirectory={handleCreateDirectory}
               onChooseFolder={chooseFolder}
               onReloadTree={handleTreeReload}
               onReRequestPermission={reRequestPermission}
