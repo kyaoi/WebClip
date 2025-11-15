@@ -215,7 +215,7 @@ function App(): JSX.Element {
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">
                         📁 ディレクトリ:{" "}
                         <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
-                          {category.folder || "（ルート）"}
+                          {category.label || "（ルート）"}
                         </code>
                       </span>
                     </div>
@@ -235,7 +235,7 @@ function App(): JSX.Element {
                         >
                           📄 ページごとに保存
                           <span className="mt-1 block text-xs font-normal text-zinc-500 dark:text-zinc-400">
-                            {category.folder || "（ルート）"}/
+                            {category.label || "（ルート）"}/
                             {"<ページタイトル>.md"}
                           </span>
                         </button>
@@ -249,7 +249,7 @@ function App(): JSX.Element {
                         >
                           📝 集約ファイルに保存
                           <span className="mt-1 block text-xs font-normal text-indigo-600/80 dark:text-indigo-300/80">
-                            {category.folder || "（ルート）"}/
+                            {category.label || "（ルート）"}/
                             {activeTemplate?.categoryAggregateFileName ??
                               "inbox.md"}
                           </span>
@@ -286,7 +286,7 @@ function App(): JSX.Element {
                                 >
                                   📄 ページごと
                                   <span className="mt-0.5 block text-[10px] text-zinc-500 dark:text-zinc-400">
-                                    {category.folder}/{subfolder.name}/
+                                    {category.label}/{subfolder.name}/
                                     {"<タイトル>.md"}
                                   </span>
                                 </button>
@@ -304,7 +304,7 @@ function App(): JSX.Element {
                                 >
                                   📝 集約
                                   <span className="mt-0.5 block text-[10px] text-indigo-600/80 dark:text-indigo-300/80">
-                                    {category.folder}/{subfolder.name}/
+                                    {category.label}/{subfolder.name}/
                                     {activeTemplate?.categoryAggregateFileName ??
                                       "inbox.md"}
                                   </span>
