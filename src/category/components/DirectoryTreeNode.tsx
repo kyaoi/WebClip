@@ -17,7 +17,7 @@ function DirectoryTreeNode({
   aggregateFileName,
   depth = 0,
 }: DirectoryTreeNodeProps): JSX.Element {
-  const [isExpanded, setIsExpanded] = useState(depth === 0);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <li className="text-sm">

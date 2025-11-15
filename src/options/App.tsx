@@ -352,6 +352,31 @@ export default function App(): JSX.Element {
     [settings],
   );
 
+  const handleCreateCategory = useCallback(
+    async (directoryPath: string): Promise<void> => {
+      if (!selectedTemplate) {
+        setStatus("テンプレートを選択してください。");
+        return;
+      }
+      const pathParts = directoryPath.split("/").filter(Boolean);
+      const categoryName = pathParts[pathParts.length - 1] || directoryPath;
+
+      const nextCategory: CategorySetting = {
+        id: crypto.randomUUID(),
+        label: categoryName,
+        aggregate: false,
+        subfolders: [],
+      };
+
+      await applyTemplateUpdate(selectedTemplate.id, (template) => ({
+        ...template,
+        categories: [...template.categories, nextCategory],
+      }));
+      setStatus(`カテゴリ「${categoryName}」を追加しました。`);
+    },
+    [selectedTemplate, applyTemplateUpdate],
+  );
+
   async function chooseFolder(): Promise<void> {
     if (busy) {
       return;
@@ -1038,6 +1063,7 @@ export default function App(): JSX.Element {
               selectedPath={selectedTreePath}
               onSelectPath={handleTreePathSelect}
               onCreateDirectory={handleCreateDirectory}
+              onCreateCategory={handleCreateCategory}
               onChooseFolder={chooseFolder}
               onReloadTree={handleTreeReload}
               onReRequestPermission={reRequestPermission}
