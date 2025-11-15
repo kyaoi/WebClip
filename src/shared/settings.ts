@@ -123,6 +123,7 @@ function normalizeTemplates(raw: LegacySettings): TemplateSetting[] {
     },
     entryTemplate: DEFAULT_TEMPLATE_PRESET.entryTemplate,
     directoryTemplates: [],
+    directoryCategorySettings: {},
   };
   return [legacy];
 }
@@ -143,6 +144,7 @@ function normalizeTemplate(
       DEFAULT_TEMPLATE_PRESET.categoryAggregateFileName,
   );
   const frontMatter = normalizeFrontMatter(input.frontMatter);
+  const categories = normalizeCategories(input.categories ?? []);
   const entryTemplate =
     typeof input.entryTemplate === "string" && input.entryTemplate.trim()
       ? input.entryTemplate
@@ -154,13 +156,31 @@ function normalizeTemplate(
           (dt): dt is import("./types").DirectoryTemplate => dt !== undefined,
         )
     : [];
+
+  // directoryCategorySettingsのマイグレーション
+  let directoryCategorySettings = input.directoryCategorySettings || {};
+  if (
+    Object.keys(directoryCategorySettings).length === 0 &&
+    categories.length > 0
+  ) {
+    // 旧categoriesから変換
+    directoryCategorySettings = {};
+    for (const category of categories) {
+      directoryCategorySettings[category.label] = {
+        aggregate: category.aggregate,
+        subfolders: category.subfolders,
+      };
+    }
+  }
+
   return {
     id,
     name,
     useDomainSubfolders,
     singleFilePath,
-    categories: normalizeCategories(input.categories ?? []),
+    categories,
     categoryAggregateFileName,
+    directoryCategorySettings,
     frontMatter,
     entryTemplate,
     directoryTemplates,

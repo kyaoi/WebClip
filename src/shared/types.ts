@@ -45,6 +45,13 @@ export interface CategorySubfolder {
   aggregate: boolean;
 }
 
+// ディレクトリベースのカテゴリ設定
+export interface DirectoryCategoryConfig {
+  aggregate: boolean;
+  subfolders: CategorySubfolder[];
+}
+
+// 旧CategorySetting（後方互換性のため残す）
 export interface CategorySetting {
   id: string;
   label: string;
@@ -76,8 +83,9 @@ export interface TemplateSetting {
   name: string;
   useDomainSubfolders: boolean;
   singleFilePath: string;
-  categories: CategorySetting[];
+  categories: CategorySetting[]; // 後方互換性のため保持
   categoryAggregateFileName: string;
+  directoryCategorySettings: Record<string, DirectoryCategoryConfig>; // 新: ディレクトリベースのカテゴリ設定
   frontMatter: TemplateFrontMatter;
   entryTemplate: string;
   directoryTemplates: DirectoryTemplate[];
@@ -113,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
       singleFilePath: "inbox.md",
       categories: [],
       categoryAggregateFileName: "inbox.md",
+      directoryCategorySettings: {},
       frontMatter: {
         enabled: false,
         fields: [],

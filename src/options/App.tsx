@@ -39,6 +39,7 @@ function createDefaultTemplate(name: string): TemplateSetting {
     singleFilePath: "inbox.md",
     categories: [],
     categoryAggregateFileName: "inbox.md",
+    directoryCategorySettings: {},
     frontMatter: {
       enabled: false,
       fields: [],
