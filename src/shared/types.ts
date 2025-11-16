@@ -95,11 +95,8 @@ export interface Settings {
   theme: ThemePreference;
   mruFiles: string[];
   rootFolderName?: string;
-  activeTemplateId: string;
   templates: TemplateSetting[];
 }
-
-export const DEFAULT_TEMPLATE_ID = "template-default";
 
 export const DEFAULT_ENTRY_TEMPLATE = [
   "### {{time}}",
@@ -112,10 +109,9 @@ export const DEFAULT_ENTRY_TEMPLATE = [
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   mruFiles: [],
-  activeTemplateId: DEFAULT_TEMPLATE_ID,
   templates: [
     {
-      id: DEFAULT_TEMPLATE_ID,
+      id: "template-1",
       name: "Template 1",
       useDomainSubfolders: true,
       singleFilePath: "inbox.md",

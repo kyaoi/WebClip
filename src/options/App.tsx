@@ -188,18 +188,7 @@ export default function App(): JSX.Element {
         setTreeError(null);
         const result = await buildDirectoryTree({ requestAccess: interactive });
         setDirectoryTree(result);
-        setExpandedNodeIds((prev) => {
-          if (prev.size) {
-            return prev;
-          }
-          const next = new Set<string>();
-          result.nodes
-            .filter((node) => node.kind === "directory")
-            .forEach((node) => {
-              next.add(node.id);
-            });
-          return next;
-        });
+        // ツリー読み込み時は閉じた状態で開始（自動展開しない）
       } catch (error) {
         console.error(error);
         setTreeError("ディレクトリツリーの取得に失敗しました。");
@@ -635,7 +624,7 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 px-6 py-8 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 dark:text-zinc-50">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 px-6 py-8 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-50">
       <div className="mx-auto flex w-full flex-col gap-6">
         <header className="flex flex-col gap-3 text-balance">
           <div className="flex items-center gap-3">

@@ -19,7 +19,7 @@ function CategoryTreeNode({
   saving,
   aggregateFileName,
 }: CategoryTreeNodeProps): JSX.Element {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <li className="rounded-xl border border-zinc-200 bg-white/70 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-900/70">
