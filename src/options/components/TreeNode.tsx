@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight, Folder, FolderPlus } from "lucide-react";
 import type { JSX } from "react";
 import type { DirectoryTreeNode } from "../../shared/fileSystem";
 
@@ -29,45 +30,56 @@ function TreeNode({
   return (
     <li>
       <div
-        className={`group flex items-center gap-1 rounded-lg px-1 py-1 text-sm transition ${
+        className={`group flex items-center gap-1 rounded-xl px-2 py-2 text-sm transition-all ${
           isSelected
-            ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100"
-            : "text-zinc-700 hover:bg-zinc-100/70 dark:text-zinc-200 dark:hover:bg-zinc-800/70"
+            ? "bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-800 shadow-sm dark:from-emerald-950/50 dark:to-teal-950/50 dark:text-emerald-300"
+            : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
         }`}
         style={{ paddingLeft }}
       >
         <button
           type="button"
           aria-label={isExpanded ? "折りたたむ" : "展開する"}
-          className="flex size-6 items-center justify-center rounded-md text-xs text-zinc-400 transition hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
+          className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-all hover:bg-zinc-200/50 hover:text-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
           onClick={() => onToggle(node.id)}
         >
-          <span aria-hidden>{isExpanded ? "▾" : "▸"}</span>
+          {isExpanded ? (
+            <ChevronDown className="size-4" />
+          ) : (
+            <ChevronRight className="size-4" />
+          )}
         </button>
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-left transition-all hover:bg-white/50 dark:hover:bg-zinc-800/50"
           onClick={() => onSelect(node.path)}
         >
-          <span className="truncate">📁 {node.name}</span>
+          <Folder
+            className={`size-4 flex-shrink-0 ${
+              isSelected
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-zinc-400 dark:text-zinc-500"
+            }`}
+          />
+          <span className="truncate font-medium">{node.name}</span>
         </button>
         {onCreateDirectory && (
           <button
             type="button"
             aria-label="新しいフォルダを作成"
-            className="flex size-6 items-center justify-center rounded-md text-xs text-zinc-400 opacity-0 transition hover:text-indigo-600 group-hover:opacity-100 dark:text-zinc-500 dark:hover:text-indigo-400"
+            className="flex size-7 items-center justify-center rounded-lg text-zinc-400 opacity-0 transition-all hover:bg-emerald-100 hover:text-emerald-600 group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-400"
             onClick={(e) => {
               e.stopPropagation();
               onCreateDirectory(node.path);
             }}
             title="新しいフォルダを作成"
           >
-            <span aria-hidden>+</span>
+            <FolderPlus className="size-4" />
           </button>
         )}
       </div>
       {isExpanded && node.children && node.children.length > 0 ? (
-        <ul className="ml-4 border-l border-zinc-200/70 pl-2 dark:border-zinc-800/70">
+        <ul className="ml-4 border-l-2 border-zinc-200/70 pl-2 dark:border-zinc-700/70">
           {node.children.map((child) => (
             <TreeNode
               key={child.id}
