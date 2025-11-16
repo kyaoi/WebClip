@@ -49,7 +49,7 @@ function App(): JSX.Element {
 
   if (!settings) {
     return (
-      <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="min-w-[420px] max-w-[640px] bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-5 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
         <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
           読み込み中…
         </p>
@@ -60,7 +60,7 @@ function App(): JSX.Element {
   const template = getActiveTemplate(settings);
 
   return (
-    <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-w-[420px] max-w-[640px] bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-5 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
       <div className="flex flex-col gap-5">
         <header className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <h1 className="text-xl font-semibold leading-tight">WebClip</h1>

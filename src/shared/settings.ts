@@ -4,7 +4,6 @@ import {
   type CategorySubfolder,
   DEFAULT_ENTRY_TEMPLATE,
   DEFAULT_SETTINGS,
-  DEFAULT_TEMPLATE_ID,
   type Settings,
   type TemplateFrontMatterField,
   type TemplateSetting,
@@ -15,7 +14,7 @@ const MRU_LIMIT = 5;
 
 const DEFAULT_TEMPLATE_PRESET: TemplateSetting = DEFAULT_SETTINGS
   .templates[0] ?? {
-  id: DEFAULT_TEMPLATE_ID,
+  id: "template-1",
   name: "Template 1",
   useDomainSubfolders: true,
   singleFilePath: "inbox.md",
@@ -59,11 +58,8 @@ export function getTemplateById(
 }
 
 export function getActiveTemplate(settings: Settings): TemplateSetting {
-  return (
-    getTemplateById(settings, settings.activeTemplateId) ??
-    settings.templates[0] ??
-    DEFAULT_TEMPLATE_PRESET
-  );
+  // 新仕様: 常に最初のテンプレートを返す（activeTemplateIdの概念は廃止）
+  return settings.templates[0] ?? DEFAULT_TEMPLATE_PRESET;
 }
 
 type LegacySettings = Partial<Settings> & {
@@ -79,16 +75,10 @@ function normalizeSettings(raw: Settings | LegacySettings): Settings {
   const mruFiles = Array.isArray(raw.mruFiles) ? raw.mruFiles : [];
   const rootFolderName = raw.rootFolderName;
   const templates = normalizeTemplates(raw);
-  const activeTemplateId =
-    raw.activeTemplateId &&
-    templates.some((item) => item.id === raw.activeTemplateId)
-      ? raw.activeTemplateId
-      : (templates[0]?.id ?? DEFAULT_TEMPLATE_ID);
   return {
     theme,
     mruFiles,
     rootFolderName,
-    activeTemplateId,
     templates,
   };
 }
@@ -105,7 +95,7 @@ function normalizeTemplates(raw: LegacySettings): TemplateSetting[] {
     return normalized;
   }
   const legacy: TemplateSetting = {
-    id: DEFAULT_TEMPLATE_ID,
+    id: "template-1",
     name: "Template 1",
     useDomainSubfolders:
       raw.useDomainSubfolders ?? DEFAULT_TEMPLATE_PRESET.useDomainSubfolders,
@@ -123,6 +113,7 @@ function normalizeTemplates(raw: LegacySettings): TemplateSetting[] {
     },
     entryTemplate: DEFAULT_TEMPLATE_PRESET.entryTemplate,
     directoryTemplates: [],
+    directoryCategorySettings: {},
   };
   return [legacy];
 }
@@ -143,6 +134,7 @@ function normalizeTemplate(
       DEFAULT_TEMPLATE_PRESET.categoryAggregateFileName,
   );
   const frontMatter = normalizeFrontMatter(input.frontMatter);
+  const categories = normalizeCategories(input.categories ?? []);
   const entryTemplate =
     typeof input.entryTemplate === "string" && input.entryTemplate.trim()
       ? input.entryTemplate
@@ -154,13 +146,31 @@ function normalizeTemplate(
           (dt): dt is import("./types").DirectoryTemplate => dt !== undefined,
         )
     : [];
+
+  // directoryCategorySettingsのマイグレーション
+  let directoryCategorySettings = input.directoryCategorySettings || {};
+  if (
+    Object.keys(directoryCategorySettings).length === 0 &&
+    categories.length > 0
+  ) {
+    // 旧categoriesから変換
+    directoryCategorySettings = {};
+    for (const category of categories) {
+      directoryCategorySettings[category.label] = {
+        aggregate: category.aggregate,
+        subfolders: category.subfolders,
+      };
+    }
+  }
+
   return {
     id,
     name,
     useDomainSubfolders,
     singleFilePath,
-    categories: normalizeCategories(input.categories ?? []),
+    categories,
     categoryAggregateFileName,
+    directoryCategorySettings,
     frontMatter,
     entryTemplate,
     directoryTemplates,

@@ -45,6 +45,13 @@ export interface CategorySubfolder {
   aggregate: boolean;
 }
 
+// ディレクトリベースのカテゴリ設定
+export interface DirectoryCategoryConfig {
+  aggregate: boolean;
+  subfolders: CategorySubfolder[];
+}
+
+// 旧CategorySetting（後方互換性のため残す）
 export interface CategorySetting {
   id: string;
   label: string;
@@ -76,8 +83,9 @@ export interface TemplateSetting {
   name: string;
   useDomainSubfolders: boolean;
   singleFilePath: string;
-  categories: CategorySetting[];
+  categories: CategorySetting[]; // 後方互換性のため保持
   categoryAggregateFileName: string;
+  directoryCategorySettings: Record<string, DirectoryCategoryConfig>; // 新: ディレクトリベースのカテゴリ設定
   frontMatter: TemplateFrontMatter;
   entryTemplate: string;
   directoryTemplates: DirectoryTemplate[];
@@ -87,11 +95,8 @@ export interface Settings {
   theme: ThemePreference;
   mruFiles: string[];
   rootFolderName?: string;
-  activeTemplateId: string;
   templates: TemplateSetting[];
 }
-
-export const DEFAULT_TEMPLATE_ID = "template-default";
 
 export const DEFAULT_ENTRY_TEMPLATE = [
   "### {{time}}",
@@ -104,15 +109,15 @@ export const DEFAULT_ENTRY_TEMPLATE = [
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   mruFiles: [],
-  activeTemplateId: DEFAULT_TEMPLATE_ID,
   templates: [
     {
-      id: DEFAULT_TEMPLATE_ID,
+      id: "template-1",
       name: "Template 1",
       useDomainSubfolders: true,
       singleFilePath: "inbox.md",
       categories: [],
       categoryAggregateFileName: "inbox.md",
+      directoryCategorySettings: {},
       frontMatter: {
         enabled: false,
         fields: [],
