@@ -2,11 +2,11 @@ const MAX_SLUG_LENGTH = 80;
 
 export function slugify(input: string): string {
   const normalized = input
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\s-]/g, "")
+    .normalize("NFKC")
+    .replace(/\p{M}+/gu, "")
+    .replace(/[/?#%]/g, "")
     .trim()
-    .replace(/[-\s]+/g, "-")
+    .replace(/[\s-]+/g, "_")
     .toLowerCase();
   const trimmed = normalized.slice(0, MAX_SLUG_LENGTH);
   return trimmed.length > 0 ? trimmed : "note";
@@ -19,16 +19,6 @@ export function formatTimestamp(date: Date): string {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${year}-${month}-${day} ${hours}:${minutes}`;
-}
-
-export function buildTextFragment(selection: string): string | undefined {
-  const clean = selection.trim().replace(/\s+/g, " ");
-  if (!clean) {
-    return undefined;
-  }
-  const excerpt = clean.slice(0, 120);
-  const encoded = encodeURIComponent(excerpt);
-  return `#:~:text=${encoded}`;
 }
 
 export function summarizeSelection(selection: string, max = 140): string {

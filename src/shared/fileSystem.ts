@@ -309,8 +309,7 @@ export async function appendEntry(
       variables,
     );
   }
-  const separator = existing.trim().length > 0 ? "\n\n" : "";
-  const nextContent = `${existing}${separator}${entry}\n<!-- webclip:sha1=${hash} -->\n`;
+  const nextContent = `${existing}${entry}\n<!-- webclip:sha1=${hash} -->\n`;
   await writeFileText(fileHandle, nextContent);
   return {
     status: "ok",
@@ -349,7 +348,7 @@ function ensureFrontMatter(
     nextBody = content.replace(/^\s*/, "");
   }
   const frontMatterBlock = `---\n${lines.join("\n")}\n---\n`;
-  const bodySuffix = nextBody.length > 0 ? `\n${nextBody}` : "";
+  const bodySuffix = nextBody.length > 0 ? `${nextBody}` : "";
   const result = `${frontMatterBlock}${bodySuffix}`;
   return hasBom ? `\ufeff${result}` : result;
 }
