@@ -1,7 +1,7 @@
 {
   "name": "webclip",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0",
   "type": "module",
   "packageManager": "pnpm@10.9.0",
   "engines": {
