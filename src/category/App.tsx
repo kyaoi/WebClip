@@ -1,11 +1,16 @@
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { 
+  buildDirectoryTree, 
+  type DirectoryTreeNode,
+  type DirectoryTreeResult 
+} from "../shared/fileSystem";
 import { applyTheme } from "../shared/theme";
 import type {
-  CategorySetting,
   SelectionContext,
   Settings,
 } from "../shared/types";
+import CategoryTreeNode from "./components/CategoryTreeNode";
 
 interface CategoryInitResponse {
   ok: boolean;
@@ -13,8 +18,6 @@ interface CategoryInitResponse {
   settings?: Settings;
   error?: string;
 }
-
-type CategoryClipMode = "aggregate" | "page";
 
 interface CategorySaveResponse {
   ok: boolean;
@@ -29,6 +32,7 @@ function App(): JSX.Element {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [context, setContext] = useState<SelectionContext | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [directoryTree, setDirectoryTree] = useState<DirectoryTreeResult | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +64,17 @@ function App(): JSX.Element {
       }
       setContext(initResponse.context);
       setSettings(initResponse.settings);
+      
+      // ディレクトリツリーを取得
+      if (initResponse.settings.rootFolderName) {
+        try {
+          const tree = await buildDirectoryTree({ requestAccess: false });
+          setDirectoryTree(tree);
+        } catch (treeErr) {
+          console.error("ディレクトリツリーの取得に失敗:", treeErr);
+        }
+      }
+      
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -78,14 +93,28 @@ function App(): JSX.Element {
     }
   }, [settings]);
 
-  const categories = useMemo<CategorySetting[]>(() => {
+  const templates = useMemo(() => {
     if (!settings) {
       return [];
     }
-    return [...settings.categories].sort((a, b) =>
-      a.label.localeCompare(b.label, "ja"),
-    );
+    return settings.templates;
   }, [settings]);
+
+  // ディレクトリツリーから直接カテゴリノードを取得
+  const categoryNodes = useMemo<DirectoryTreeNode[]>(() => {
+    if (!directoryTree) {
+      return [];
+    }
+    
+    // テンプレート名に対応するディレクトリノードを取得
+    return templates
+      .map((template) => 
+        directoryTree.nodes.find(
+          (node: DirectoryTreeNode) => node.name === template.name && node.kind === "directory"
+        )
+      )
+      .filter((node): node is DirectoryTreeNode => node !== undefined);
+  }, [templates, directoryTree]);
 
   const selectionSnippet = useMemo(() => {
     const text = context?.selection.trim().replace(/\s+/g, " ") ?? "";
@@ -93,20 +122,22 @@ function App(): JSX.Element {
   }, [context]);
 
   async function handleSelectCategory(
-    categoryId: string,
-    mode: CategoryClipMode,
+    path: string,
+    mode: "aggregate" | "page",
   ): Promise<void> {
     if (!requestId) {
       return;
     }
     try {
       setSaving(true);
+      console.log("📤 Sending save request:", { requestId, categoryPath: path, mode });
       const response = (await chrome.runtime.sendMessage({
         type: "webclip:category:save",
         requestId,
-        categoryId,
+        categoryPath: path,
         mode,
       })) as CategorySaveResponse;
+      console.log("📥 Received response:", response);
       if (!response.ok || !response.result) {
         setStatus(response.error ?? "保存に失敗しました。");
         setSaving(false);
@@ -142,7 +173,7 @@ function App(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
         <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
           読み込み中…
         </p>
@@ -152,7 +183,7 @@ function App(): JSX.Element {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
         <div className="rounded-xl border border-rose-400/60 bg-white/80 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/50 dark:bg-zinc-900/70 dark:text-rose-300">
           {error}
         </div>
@@ -170,7 +201,7 @@ function App(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-5 py-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 px-5 py-6 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
       <div className="flex flex-col gap-5">
         <header className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">
@@ -190,54 +221,16 @@ function App(): JSX.Element {
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
             カテゴリを選択
           </h2>
-          {categories.length ? (
-            <ul className="mt-3 space-y-3">
-              {categories.map((category) => (
-                <li
-                  key={category.id}
-                  className="rounded-xl border border-zinc-200 bg-white/70 p-4 text-sm dark:border-zinc-700 dark:bg-zinc-900/70"
-                >
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-zinc-700 dark:text-zinc-200">
-                        {category.label}
-                      </span>
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                        サブフォルダ: {category.folder || "(ルート)"}
-                      </span>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void handleSelectCategory(category.id, "page")
-                        }
-                        disabled={saving}
-                        className="rounded-lg border border-indigo-200 bg-white/80 px-3 py-2 text-sm transition hover:border-indigo-400 hover:bg-indigo-50 dark:border-indigo-500/50 dark:bg-zinc-900/80 dark:hover:border-indigo-400 dark:hover:bg-indigo-500/20"
-                      >
-                        ページごとに保存
-                        <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-                          {category.folder || "(ルート)"}/
-                          {"<ページタイトル>.md"}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void handleSelectCategory(category.id, "aggregate")
-                        }
-                        disabled={saving}
-                        className="rounded-lg border border-indigo-500 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-600 transition hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-400/70 dark:bg-indigo-500/20 dark:text-indigo-200"
-                      >
-                        カテゴリInboxに保存
-                        <span className="block text-xs text-indigo-500/80 dark:text-indigo-200/80">
-                          {category.folder || "(ルート)"}/
-                          {settings?.categoryAggregateFileName}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                </li>
+          {categoryNodes.length ? (
+            <ul className="mt-3 space-y-1.5">
+              {categoryNodes.map((node) => (
+                <CategoryTreeNode
+                  key={node.id}
+                  node={node}
+                  onSelectCategory={handleSelectCategory}
+                  saving={saving}
+                  aggregateFileName="inbox.md"
+                />
               ))}
             </ul>
           ) : (
@@ -249,7 +242,7 @@ function App(): JSX.Element {
             <button
               type="button"
               onClick={openOptions}
-              className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+              className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:border-indigo-500 dark:hover:bg-zinc-800 dark:hover:text-indigo-400"
             >
               設定を開く
             </button>
@@ -266,14 +259,14 @@ function App(): JSX.Element {
           <button
             type="button"
             onClick={() => void initialize()}
-            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:border-indigo-500 dark:hover:bg-zinc-800 dark:hover:text-indigo-400"
           >
             再読み込み
           </button>
           <button
             type="button"
             onClick={handleCancel}
-            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-rose-400 hover:text-rose-500 dark:border-zinc-700 dark:text-zinc-300"
+            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-rose-400 hover:text-rose-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:border-rose-500 dark:hover:bg-zinc-800 dark:hover:text-rose-400"
           >
             キャンセル
           </button>

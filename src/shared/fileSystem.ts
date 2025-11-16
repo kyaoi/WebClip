@@ -1,7 +1,37 @@
 import { loadRootDirectoryHandle } from "./handles";
-import type { ClipResult, ClipTarget } from "./types";
+import { createTemplateVariables, renderFrontMatterValue } from "./template";
+import type {
+  ClipResult,
+  ClipTarget,
+  SelectionContext,
+  TemplateFrontMatterField,
+  TemplateSetting,
+} from "./types";
 
 const MARKDOWN_EXTENSION = ".md";
+
+export type DirectoryTreeNodeKind = "directory" | "file";
+
+export interface DirectoryTreeNode {
+  id: string;
+  name: string;
+  path: string;
+  kind: DirectoryTreeNodeKind;
+  children?: DirectoryTreeNode[];
+}
+
+export interface DirectoryTreeResult {
+  rootName: string | null;
+  nodes: DirectoryTreeNode[];
+  totalCount: number;
+  truncated: boolean;
+  requiresPermission: boolean;
+}
+
+interface TraverseState {
+  count: number;
+  truncated: boolean;
+}
 
 function ensureMarkdownExtension(fileName: string): string {
   if (fileName.toLowerCase().endsWith(MARKDOWN_EXTENSION)) {
@@ -30,6 +60,40 @@ export async function listFolders(): Promise<string[]> {
   return folders.sort((a, b) => a.localeCompare(b, "ja"));
 }
 
+export async function createDirectory(
+  path: string[],
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const root = await loadRootDirectoryHandle({ requestAccess: true });
+    if (!root) {
+      return {
+        success: false,
+        error: "保存先フォルダが設定されていません。",
+      };
+    }
+    let current: FileSystemDirectoryHandle = root;
+    for (const segment of path) {
+      if (!segment || segment.trim().length === 0) {
+        return { success: false, error: "無効なディレクトリ名です。" };
+      }
+      current = await current.getDirectoryHandle(segment, { create: true });
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to create directory:", error);
+    if ((error as DOMException)?.name === "NotAllowedError") {
+      return {
+        success: false,
+        error: "ディレクトリ作成の権限がありません。",
+      };
+    }
+    return {
+      success: false,
+      error: "ディレクトリの作成に失敗しました。",
+    };
+  }
+}
+
 async function traverse(
   dir: FileSystemDirectoryHandle,
   prefix: string,
@@ -54,6 +118,74 @@ async function traverse(
       return;
     }
   }
+}
+
+export async function buildDirectoryTree(
+  options: { requestAccess?: boolean; maxEntries?: number } = {},
+): Promise<DirectoryTreeResult> {
+  const { requestAccess = false, maxEntries = 500 } = options;
+  const root = await loadRootDirectoryHandle({ requestAccess });
+  if (!root) {
+    return {
+      rootName: null,
+      nodes: [],
+      totalCount: 0,
+      truncated: false,
+      requiresPermission: true,
+    };
+  }
+  const state: TraverseState = { count: 0, truncated: false };
+  const nodes = await collectDirectoryNodes(root, "", state, maxEntries);
+  return {
+    rootName: root.name,
+    nodes,
+    totalCount: state.count,
+    truncated: state.truncated,
+    requiresPermission: false,
+  };
+}
+
+async function collectDirectoryNodes(
+  dir: FileSystemDirectoryHandle,
+  prefix: string,
+  state: TraverseState,
+  maxEntries: number,
+): Promise<DirectoryTreeNode[]> {
+  if (!dir.values) {
+    return [];
+  }
+  const directories: DirectoryTreeNode[] = [];
+  for await (const handle of dir.values()) {
+    if (state.count >= maxEntries) {
+      state.truncated = true;
+      break;
+    }
+    if (handle.kind === "directory") {
+      const path = prefix ? `${prefix}/${handle.name}` : handle.name;
+      state.count += 1;
+      const node: DirectoryTreeNode = {
+        id: path || handle.name,
+        name: handle.name,
+        kind: "directory",
+        path,
+      };
+      if (!state.truncated) {
+        node.children = await collectDirectoryNodes(
+          handle as FileSystemDirectoryHandle,
+          path,
+          state,
+          maxEntries,
+        );
+      }
+      directories.push(node);
+    }
+    if (state.count >= maxEntries) {
+      state.truncated = true;
+      break;
+    }
+  }
+  directories.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  return directories;
 }
 
 async function traverseFolders(
@@ -143,6 +275,10 @@ export async function appendEntry(
   target: ClipTarget,
   entry: string,
   hash: string,
+  options: {
+    context: SelectionContext;
+    template: TemplateSetting;
+  },
 ): Promise<ClipResult> {
   const fileHandle = await resolveTargetHandle(target);
   if (!fileHandle) {
@@ -164,6 +300,15 @@ export async function appendEntry(
   } catch {
     // ignore read errors and continue with empty content
   }
+  const template = options.template;
+  const variables = createTemplateVariables(options.context, { target });
+  if (template.frontMatter.enabled && template.frontMatter.fields.length > 0) {
+    existing = ensureFrontMatter(
+      existing,
+      template.frontMatter.fields,
+      variables,
+    );
+  }
   const separator = existing.trim().length > 0 ? "\n\n" : "";
   const nextContent = `${existing}${separator}${entry}\n<!-- webclip:sha1=${hash} -->\n`;
   await writeFileText(fileHandle, nextContent);
@@ -175,4 +320,114 @@ export async function appendEntry(
     ),
     hash,
   };
+}
+
+function ensureFrontMatter(
+  existing: string,
+  fields: TemplateFrontMatterField[],
+  variables: ReturnType<typeof createTemplateVariables>,
+): string {
+  if (!fields.length) {
+    return existing;
+  }
+  const hasBom = existing.startsWith("\ufeff");
+  const content = hasBom ? existing.slice(1) : existing;
+  const parsed = splitFrontMatter(content);
+  const activeFields = fields.filter((field) => field.key.trim().length > 0);
+  if (!activeFields.length) {
+    return existing;
+  }
+  let nextBody: string;
+  let lines: string[];
+  if (parsed.hasFrontMatter) {
+    lines = mergeFrontMatterLines(parsed.lines, activeFields, variables);
+    nextBody = parsed.body;
+  } else {
+    lines = activeFields.map(
+      (field) => `${field.key}: ${renderFrontMatterValue(field, variables)}`,
+    );
+    nextBody = content.replace(/^\s*/, "");
+  }
+  const frontMatterBlock = `---\n${lines.join("\n")}\n---\n`;
+  const bodySuffix = nextBody.length > 0 ? `\n${nextBody}` : "";
+  const result = `${frontMatterBlock}${bodySuffix}`;
+  return hasBom ? `\ufeff${result}` : result;
+}
+
+type TemplateVariablesType = ReturnType<typeof createTemplateVariables>;
+
+interface FrontMatterParts {
+  hasFrontMatter: boolean;
+  lines: string[];
+  body: string;
+}
+
+function splitFrontMatter(content: string): FrontMatterParts {
+  const normalized = content.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---")) {
+    return { hasFrontMatter: false, lines: [], body: normalized };
+  }
+  if (!normalized.startsWith("---\n")) {
+    return { hasFrontMatter: false, lines: [], body: normalized };
+  }
+  // Find the closing delimiter: must be "\n---\n" or "\n---" at EOF
+  let closingIndex = -1;
+  let searchIndex = 4;
+  while (searchIndex < normalized.length) {
+    const idx = normalized.indexOf("\n---", searchIndex);
+    if (idx === -1) break;
+    // Check if followed by newline or is at EOF
+    if (
+      (idx + 4 < normalized.length && normalized[idx + 4] === "\n") ||
+      idx + 4 === normalized.length
+    ) {
+      closingIndex = idx;
+      break;
+    }
+    searchIndex = idx + 1;
+  }
+  if (closingIndex === -1) {
+    return { hasFrontMatter: false, lines: [], body: normalized };
+  }
+  const frontMatterContent = normalized.slice(4, closingIndex);
+  let remainder = normalized.slice(closingIndex + 4);
+  if (remainder.startsWith("\n")) remainder = remainder.slice(1);
+  const body = remainder;
+  const lines =
+    frontMatterContent.length > 0 ? frontMatterContent.split("\n") : [];
+  return { hasFrontMatter: true, lines, body };
+}
+
+function mergeFrontMatterLines(
+  existingLines: string[],
+  fields: TemplateFrontMatterField[],
+  variables: TemplateVariablesType,
+): string[] {
+  const baseLines = existingLines.some((line) => line.trim().length > 0)
+    ? [...existingLines]
+    : [];
+  const indexMap = new Map<string, number>();
+  baseLines.forEach((line, index) => {
+    const match = line.match(/^([^:#]+):\s*(.*)$/);
+    if (match) {
+      indexMap.set(match[1].trim(), index);
+    }
+  });
+  for (const field of fields) {
+    const renderedValue = renderFrontMatterValue(field, variables);
+    const newLine = `${field.key}: ${renderedValue}`;
+    const existingIndex = indexMap.get(field.key);
+    if (existingIndex !== undefined) {
+      const currentLine = baseLines[existingIndex] ?? "";
+      const currentMatch = currentLine.match(/^([^:#]+):\s*(.*)$/);
+      const currentValue = currentMatch?.[2]?.trim() ?? "";
+      if (field.updateOnClip || currentValue.length === 0) {
+        baseLines[existingIndex] = newLine;
+      }
+    } else {
+      indexMap.set(field.key, baseLines.length);
+      baseLines.push(newLine);
+    }
+  }
+  return baseLines;
 }

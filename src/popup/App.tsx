@@ -1,7 +1,11 @@
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { loadRootDirectoryHandle } from "../shared/handles";
-import { getSettings, updateSettings } from "../shared/settings";
+import {
+  getActiveTemplate,
+  getSettings,
+  updateSettings,
+} from "../shared/settings";
 import { applyTheme } from "../shared/theme";
 import type { Settings, ThemePreference } from "../shared/types";
 
@@ -45,7 +49,7 @@ function App(): JSX.Element {
 
   if (!settings) {
     return (
-      <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="min-w-[420px] max-w-[640px] bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-5 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
         <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
           読み込み中…
         </p>
@@ -53,8 +57,10 @@ function App(): JSX.Element {
     );
   }
 
+  const template = getActiveTemplate(settings);
+
   return (
-    <div className="min-w-[420px] max-w-[640px] bg-zinc-50 p-5 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-w-[420px] max-w-[640px] bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-5 text-zinc-900 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-indigo-950 dark:to-purple-950 dark:text-zinc-100">
       <div className="flex flex-col gap-5">
         <header className="rounded-2xl border border-zinc-200 bg-white/80 p-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <h1 className="text-xl font-semibold leading-tight">WebClip</h1>
@@ -85,29 +91,69 @@ function App(): JSX.Element {
           </h2>
           <ul className="mt-2 space-y-1 text-sm text-zinc-600 dark:text-zinc-300">
             <li>
-              単一ファイル: <code>{settings.singleFilePath}</code>
+              使用テンプレート:{" "}
+              <span className="font-medium">{template.name}</span>
             </li>
             <li>
-              ドメイン分類: {settings.useDomainSubfolders ? "有効" : "無効"}
+              単一ファイル: <code>{template.singleFilePath}</code>
+            </li>
+            <li>
+              ドメイン分類: {template.useDomainSubfolders ? "有効" : "無効"}
             </li>
           </ul>
           <div className="mt-3 rounded-xl border border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-400">
             <p className="font-semibold text-zinc-600 dark:text-zinc-300">
-              カテゴリ一覧
+              カテゴリ一覧（右クリックから選択できます）
             </p>
-            {settings.categories.length ? (
-              <ul className="mt-1 space-y-1">
-                {settings.categories.map((category) => (
+            {template.categories.length ? (
+              <ul className="mt-2 space-y-3">
+                {template.categories.map((category) => (
                   <li
                     key={category.id}
-                    className="flex items-center justify-between gap-2"
+                    className="rounded-lg border border-zinc-200/60 bg-white/50 p-2 dark:border-zinc-700/60 dark:bg-zinc-900/50"
                   >
-                    <span>{category.label}</span>
-                    <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                      {category.aggregate
-                        ? `${category.folder}/${settings.categoryAggregateFileName}`
-                        : `${category.folder}/<タイトル>.md`}
-                    </span>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                          {category.label}
+                        </span>
+                        <div className="mt-1 space-y-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <div>
+                            📁 ディレクトリ:{" "}
+                            <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
+                              {category.label || "（ルート）"}
+                            </code>
+                          </div>
+                          <div>
+                            📄 カテゴリ直下:{" "}
+                            {category.aggregate
+                              ? `${category.label}/${template.categoryAggregateFileName}（集約ファイル）`
+                              : `${category.label}/<ページタイトル>.md（ページごと）`}
+                          </div>
+                          {category.subfolders.length > 0 && (
+                            <div className="mt-2 rounded border border-indigo-100 bg-indigo-50/40 p-1.5 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                              <p className="font-semibold text-indigo-700 dark:text-indigo-300">
+                                📂 サブフォルダ ({category.subfolders.length}
+                                個):
+                              </p>
+                              <ul className="mt-1 space-y-1 pl-2">
+                                {category.subfolders.map((subfolder) => (
+                                  <li key={subfolder.id}>
+                                    <span className="font-medium">
+                                      {subfolder.name}
+                                    </span>{" "}
+                                    →{" "}
+                                    {subfolder.aggregate
+                                      ? `${category.label}/${subfolder.name}/${template.categoryAggregateFileName}（集約）`
+                                      : `${category.label}/${subfolder.name}/<タイトル>.md（個別）`}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -115,7 +161,8 @@ function App(): JSX.Element {
               <p className="mt-1">カテゴリは未設定です。</p>
             )}
             <p className="mt-2 text-[11px] text-zinc-400 dark:text-zinc-500">
-              詳細は「設定を開く」から変更できます。
+              カテゴリを使うには右クリックメニューで「Save to
+              category…」を選択してください。
             </p>
           </div>
         </section>

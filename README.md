@@ -17,6 +17,10 @@
   - **existingFilePick**: pick an existing `.md` and append (can create a new file)
 - **Single-file inbox**: collect every clip into a user-defined Markdown file (e.g. `inbox.md`) via the “Save to inbox file” context menu. Configure the path from the Options or Popup page.
 - **Category clipping**: choose a category at save time to organise notes under `/カテゴリ名/ページタイトル.md`, or aggregate into `/カテゴリ名/inbox.md` when that category’s inbox mode is enabled.
+- **Directory tree management**: 
+  - View only directories in the tree (files are hidden for clarity)
+  - Create new directories directly from the tree with a single click
+  - Directory-specific templates (data structure ready, UI implementation planned)
 - Automatically stores context:
   - Timestamp (`YYYY-MM-DD HH:mm`)
   - Selected quote (as Markdown blockquote)
@@ -72,8 +76,12 @@ Select text → **Right-click → Save to inbox file**.
 Appends to the single Markdown file configured in Options / Popup (creates it on first run).
 
 ### category (Save to category…)
-Select text → **Right-click → Save to category…** → pick a category.  
-On the picker you can choose per clip whether to create `/カテゴリ名/<page-title>.md` or append to `/カテゴリ名/inbox.md`.
+Select text → **Right-click → Save to category…** → pick a category from the **tree view**.  
+Categories are displayed in a hierarchical tree structure with expandable subfolders. Each category uses its label directly as the directory name. You can choose to save to:
+- `/CategoryName/<page-title>.md` (per-page mode)
+- `/CategoryName/inbox.md` (aggregate mode)
+- `/CategoryName/SubfolderName/<page-title>.md` (subfolder per-page mode)
+- `/CategoryName/SubfolderName/inbox.md` (subfolder aggregate mode)
 
 ### existingFilePick
 Select text → **Right-click → Save to existing file…**  
@@ -104,8 +112,10 @@ Template variables: `ts`, `selection`, `title`, `url`, `urlFrag`, `linkUrl`, `li
 - **Options / Popup → Save style**
   - Toggle domain-based subfolders for per-page saves.
   - Set the inbox file path (auto-appends `.md` if omitted).
-  - Add, rename, or remove categories, pick a subfolder from the saved root (or enter a path), and switch inbox mode per category.
-  - Configure the shared category inbox filename (default `inbox.md`).
+  - Add, rename, or remove categories. **Category names are used directly as directory names**.
+  - Configure subfolder behavior for each category.
+  - Set the shared category inbox filename (default `inbox.md`).
+  - **Tree view**: Browse your directory structure and create new directories with a single click.
 - Settings persist locally in Chrome storage + File System Access handles. Reopen Options whenever permissions need to be refreshed.
 
 ---

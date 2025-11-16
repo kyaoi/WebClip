@@ -6,12 +6,19 @@ import {
   summarizeSelection,
 } from "../shared/format";
 import { sha1Hex } from "../shared/hash";
-import { getSettings, pushMruEntry } from "../shared/settings";
+import {
+  getActiveTemplate,
+  getSettings,
+  pushMruEntry,
+} from "../shared/settings";
+import { createTemplateVariables, renderTemplate } from "../shared/template";
 import type {
   ClipMode,
   ClipResult,
   ClipTarget,
   SelectionContext,
+  Settings,
+  TemplateSetting,
 } from "../shared/types";
 
 const MENU_PER_PAGE = "webclip:context:per-page";
@@ -174,14 +181,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.type === "webclip:category:save") {
-    const { requestId, categoryId, mode } = message as {
+    console.log("🎯 Background received category:save message:", message);
+    const { requestId, categoryPath, mode } = message as {
       requestId: string;
-      categoryId: string;
-      mode?: "aggregate" | "page";
+      categoryPath: string;
+      mode: "aggregate" | "page";
     };
     void (async () => {
       const pending = pendingRequests.get(requestId);
       if (!pending || pending.mode !== "category") {
+        console.error("❌ Pending request not found or wrong mode");
         sendResponse({
           ok: false,
           error: "保存リクエストが見つかりませんでした。",
@@ -190,25 +199,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       const { context, pickerWindowId } = pending;
       const settings = await getSettings();
-      const category = settings.categories.find(
-        (item) => item.id === categoryId,
-      );
-      if (!category) {
-        sendResponse({
-          ok: false,
-          error: "カテゴリが見つかりませんでした。",
-        });
-        return;
-      }
+      const template = getActiveTemplate(settings);
+
+      let pathString: string;
       const fileBase = slugify(context.title);
-      const useAggregate = mode ? mode === "aggregate" : category.aggregate;
-      const folderPrefix = category.folder ? `${category.folder}/` : "";
-      const pathString = useAggregate
-        ? `${folderPrefix}${settings.categoryAggregateFileName}`
-        : `${folderPrefix}${fileBase}.md`;
+
+      // 新仕様: categoryPathを直接使用
+      const useAggregate = mode === "aggregate";
+      pathString = useAggregate
+        ? `${categoryPath}/${template.categoryAggregateFileName}`
+        : `${categoryPath}/${fileBase}.md`;
+
+      console.log("💾 Saving to path:", pathString);
+
       const target = clipTargetFromPath(pathString, true);
       const displayPath = [...target.path, target.fileName].join("/");
-      const result = await processClipWithTarget(context, target);
+      const result = await processClipWithTarget(context, target, {
+        settings,
+        template,
+      });
       await finalizeRequest(requestId, result, displayPath);
       sendResponse({ ok: true, result });
       if (pickerWindowId !== undefined) {
@@ -238,25 +247,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 function setupContextMenus(): void {
   chrome.contextMenus.removeAll(() => {
+    const contexts: [
+      `${chrome.contextMenus.ContextType}`,
+      ...`${chrome.contextMenus.ContextType}`[],
+    ] = [
+      chrome.contextMenus.ContextType.SELECTION,
+      chrome.contextMenus.ContextType.IMAGE,
+    ];
     chrome.contextMenus.create({
       id: MENU_PER_PAGE,
       title: "Save to Markdown (per page)",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_SINGLE_FILE,
       title: "Save to inbox file",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_CATEGORY,
       title: "Save to category…",
-      contexts: ["selection"],
+      contexts,
     });
     chrome.contextMenus.create({
       id: MENU_EXISTING,
       title: "Save to existing file…",
-      contexts: ["selection"],
+      contexts,
     });
   });
 }
@@ -300,7 +316,8 @@ async function handlePerPageClip(context: SelectionContext): Promise<void> {
 
 async function handleSingleFileClip(context: SelectionContext): Promise<void> {
   const settings = await getSettings();
-  const path = settings.singleFilePath.trim();
+  const template = getActiveTemplate(settings);
+  const path = template.singleFilePath.trim();
   if (!path) {
     await showNotification(
       "WebClip",
@@ -310,7 +327,10 @@ async function handleSingleFileClip(context: SelectionContext): Promise<void> {
   }
   const target = clipTargetFromPath(path, true);
   const displayPath = [...target.path, target.fileName].join("/");
-  const result = await processClipWithTarget(context, target);
+  const result = await processClipWithTarget(context, target, {
+    settings,
+    template,
+  });
   await notifyClipResult(context, result, displayPath);
 }
 
@@ -340,7 +360,8 @@ async function handleCategoryClip(
   context: SelectionContext,
 ): Promise<void> {
   const settings = await getSettings();
-  if (!settings.categories.length) {
+  const template = getActiveTemplate(settings);
+  if (!template.categories.length) {
     await showNotification(
       "WebClip",
       "カテゴリが設定されていません。オプションで追加してください。",
@@ -405,7 +426,8 @@ async function processClipDefaultTarget(
 ): Promise<ClipResult> {
   const url = new URL(context.baseUrl);
   const settings = await getSettings();
-  const pathSegments = settings.useDomainSubfolders
+  const template = getActiveTemplate(settings);
+  const pathSegments = template.useDomainSubfolders
     ? domainSegmentsFromUrl(url)
     : [];
   const fileName = `${slugify(context.title)}.md`;
@@ -414,35 +436,56 @@ async function processClipDefaultTarget(
     fileName,
     createIfMissing: true,
   };
-  return processClipWithTarget(context, target);
+  return processClipWithTarget(context, target, { settings, template });
 }
 
 async function processClipWithTarget(
   context: SelectionContext,
   target: ClipTarget,
+  options: {
+    settings?: Settings;
+    template?: TemplateSetting;
+  } = {},
 ): Promise<ClipResult> {
-  const hash = await sha1Hex(`${context.selection}|${context.baseUrl}`);
-  const entry = buildMarkdownEntry(context);
-  const result = await appendEntry(target, entry, hash);
+  const settings = options.settings ?? (await getSettings());
+  const template = options.template ?? getActiveTemplate(settings);
+  const hash = await sha1Hex(`${context.markdown}|${context.baseUrl}`);
+  const entry = buildMarkdownEntry(context, template, target);
+  const result = await appendEntry(target, entry, hash, {
+    context,
+    template,
+  });
   if (result.status === "ok" && result.filePath) {
     await pushMruEntry(result.filePath);
   }
   return result;
 }
 
-function buildMarkdownEntry(context: SelectionContext): string {
+function buildMarkdownEntry(
+  context: SelectionContext,
+  template: TemplateSetting,
+  target: ClipTarget,
+): string {
+  const variables = createTemplateVariables(context, { target });
+  const base = template.entryTemplate?.trim().length
+    ? template.entryTemplate
+    : createDefaultEntryTemplate(context);
+  const rendered = renderTemplate(base, variables);
+  return rendered.replace(/\s+$/, "");
+}
+
+function createDefaultEntryTemplate(context: SelectionContext): string {
   const timestamp = formatTimestamp(new Date(context.createdAt));
-  const quoteLines = context.selection
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => `> ${line}`)
-    .join("\n");
-  const lines = [`### ${timestamp}`, quoteLines, ""];
-  lines.push(`- source: [${context.title}](${context.textFragmentUrl})`);
-  if (context.link) {
-    const linkText = context.link.text.trim() || context.link.href;
-    lines.push(`- link: [${linkText}](${context.link.href})`);
+  const content = context.markdown.trim();
+  const lines = [`### ${timestamp}`];
+  if (content) {
+    lines.push(content);
   }
+  lines.push(
+    "",
+    `### source: [${context.title}](${context.textFragmentUrl})`,
+    "---",
+  );
   return lines.join("\n");
 }
 
