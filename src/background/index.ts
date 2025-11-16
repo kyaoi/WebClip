@@ -181,15 +181,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.type === "webclip:category:save") {
-    const { requestId, categoryId, subfolderId, mode } = message as {
+    console.log("🎯 Background received category:save message:", message);
+    const { requestId, categoryPath, mode } = message as {
       requestId: string;
-      categoryId: string;
-      subfolderId?: string;
-      mode?: "aggregate" | "page";
+      categoryPath: string;
+      mode: "aggregate" | "page";
     };
     void (async () => {
       const pending = pendingRequests.get(requestId);
       if (!pending || pending.mode !== "category") {
+        console.error("❌ Pending request not found or wrong mode");
         sendResponse({
           ok: false,
           error: "保存リクエストが見つかりませんでした。",
@@ -199,45 +200,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const { context, pickerWindowId } = pending;
       const settings = await getSettings();
       const template = getActiveTemplate(settings);
-      const category = template.categories.find(
-        (item) => item.id === categoryId,
-      );
-      if (!category) {
-        sendResponse({
-          ok: false,
-          error: "カテゴリが見つかりませんでした。",
-        });
-        return;
-      }
 
       let pathString: string;
       const fileBase = slugify(context.title);
 
-      if (subfolderId) {
-        const subfolder = category.subfolders.find(
-          (sub) => sub.id === subfolderId,
-        );
-        if (!subfolder) {
-          sendResponse({
-            ok: false,
-            error: "サブフォルダが見つかりませんでした。",
-          });
-          return;
-        }
-        const useAggregate = mode ? mode === "aggregate" : subfolder.aggregate;
-        const folderPrefix = category.label
-          ? `${category.label}/${subfolder.name}/`
-          : `${subfolder.name}/`;
-        pathString = useAggregate
-          ? `${folderPrefix}${template.categoryAggregateFileName}`
-          : `${folderPrefix}${fileBase}.md`;
-      } else {
-        const useAggregate = mode ? mode === "aggregate" : category.aggregate;
-        const folderPrefix = category.label ? `${category.label}/` : "";
-        pathString = useAggregate
-          ? `${folderPrefix}${template.categoryAggregateFileName}`
-          : `${folderPrefix}${fileBase}.md`;
-      }
+      // 新仕様: categoryPathを直接使用
+      const useAggregate = mode === "aggregate";
+      pathString = useAggregate
+        ? `${categoryPath}/${template.categoryAggregateFileName}`
+        : `${categoryPath}/${fileBase}.md`;
+
+      console.log("💾 Saving to path:", pathString);
 
       const target = clipTargetFromPath(pathString, true);
       const displayPath = [...target.path, target.fileName].join("/");

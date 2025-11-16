@@ -1,8 +1,12 @@
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { 
+  buildDirectoryTree, 
+  type DirectoryTreeNode,
+  type DirectoryTreeResult 
+} from "../shared/fileSystem";
 import { applyTheme } from "../shared/theme";
 import type {
-  CategorySetting,
   SelectionContext,
   Settings,
 } from "../shared/types";
@@ -14,8 +18,6 @@ interface CategoryInitResponse {
   settings?: Settings;
   error?: string;
 }
-
-type CategoryClipMode = "aggregate" | "page";
 
 interface CategorySaveResponse {
   ok: boolean;
@@ -30,6 +32,7 @@ function App(): JSX.Element {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [context, setContext] = useState<SelectionContext | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [directoryTree, setDirectoryTree] = useState<DirectoryTreeResult | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,6 +64,17 @@ function App(): JSX.Element {
       }
       setContext(initResponse.context);
       setSettings(initResponse.settings);
+      
+      // ディレクトリツリーを取得
+      if (initResponse.settings.rootFolderName) {
+        try {
+          const tree = await buildDirectoryTree({ requestAccess: false });
+          setDirectoryTree(tree);
+        } catch (treeErr) {
+          console.error("ディレクトリツリーの取得に失敗:", treeErr);
+        }
+      }
+      
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -86,16 +100,21 @@ function App(): JSX.Element {
     return settings.templates;
   }, [settings]);
 
-  // 新仕様: テンプレート = カテゴリとして扱う
-  const categories = useMemo<CategorySetting[]>(() => {
-    // 新仕様ではtemplatesがカテゴリなので、CategorySetting型に変換
-    return templates.map((template) => ({
-      id: template.id,
-      label: template.name,
-      aggregate: false, // 新仕様では使用しない
-      subfolders: [], // 新仕様ではサブフォルダはないので空配列
-    }));
-  }, [templates]);
+  // ディレクトリツリーから直接カテゴリノードを取得
+  const categoryNodes = useMemo<DirectoryTreeNode[]>(() => {
+    if (!directoryTree) {
+      return [];
+    }
+    
+    // テンプレート名に対応するディレクトリノードを取得
+    return templates
+      .map((template) => 
+        directoryTree.nodes.find(
+          (node: DirectoryTreeNode) => node.name === template.name && node.kind === "directory"
+        )
+      )
+      .filter((node): node is DirectoryTreeNode => node !== undefined);
+  }, [templates, directoryTree]);
 
   const selectionSnippet = useMemo(() => {
     const text = context?.selection.trim().replace(/\s+/g, " ") ?? "";
@@ -103,22 +122,22 @@ function App(): JSX.Element {
   }, [context]);
 
   async function handleSelectCategory(
-    categoryId: string,
-    mode: CategoryClipMode,
-    subfolderId?: string,
+    path: string,
+    mode: "aggregate" | "page",
   ): Promise<void> {
     if (!requestId) {
       return;
     }
     try {
       setSaving(true);
+      console.log("📤 Sending save request:", { requestId, categoryPath: path, mode });
       const response = (await chrome.runtime.sendMessage({
         type: "webclip:category:save",
         requestId,
-        categoryId,
-        subfolderId,
+        categoryPath: path,
         mode,
       })) as CategorySaveResponse;
+      console.log("📥 Received response:", response);
       if (!response.ok || !response.result) {
         setStatus(response.error ?? "保存に失敗しました。");
         setSaving(false);
@@ -202,12 +221,12 @@ function App(): JSX.Element {
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
             カテゴリを選択
           </h2>
-          {categories.length ? (
-            <ul className="mt-3 space-y-2">
-              {categories.map((category) => (
+          {categoryNodes.length ? (
+            <ul className="mt-3 space-y-1.5">
+              {categoryNodes.map((node) => (
                 <CategoryTreeNode
-                  key={category.id}
-                  category={category}
+                  key={node.id}
+                  node={node}
                   onSelectCategory={handleSelectCategory}
                   saving={saving}
                   aggregateFileName="inbox.md"
@@ -223,7 +242,7 @@ function App(): JSX.Element {
             <button
               type="button"
               onClick={openOptions}
-              className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+              className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:border-indigo-500 dark:hover:bg-zinc-800 dark:hover:text-indigo-400"
             >
               設定を開く
             </button>
@@ -240,14 +259,14 @@ function App(): JSX.Element {
           <button
             type="button"
             onClick={() => void initialize()}
-            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:text-zinc-300"
+            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:border-indigo-500 dark:hover:bg-zinc-800 dark:hover:text-indigo-400"
           >
             再読み込み
           </button>
           <button
             type="button"
             onClick={handleCancel}
-            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-rose-400 hover:text-rose-500 dark:border-zinc-700 dark:text-zinc-300"
+            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:border-rose-400 hover:text-rose-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:border-rose-500 dark:hover:bg-zinc-800 dark:hover:text-rose-400"
           >
             キャンセル
           </button>
